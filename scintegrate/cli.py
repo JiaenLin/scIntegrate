@@ -18,7 +18,7 @@ def _assess(a):
         return 1
     from . import __version__
     from .methods import available, run, METHODS
-    from .metrics import assess
+    from .metrics import assess, composite, confounding, recommend
     from .figures import panel, highlight, _umap
     from .report import write
 
@@ -79,15 +79,31 @@ def _assess(a):
                  "Aligned with its counterparts, or dispersed through everything? "
                  "This is the reading no metric substitutes for."))
 
+    scored = composite(rows, w_bio=a.w_bio)
+    conf = confounding(A.obs, a.batch_key, a.bio_factor or [])
+    rec = recommend(scored, conf, w_bio=a.w_bio)
+    print("")
+    for f, c in conf.items():
+        print(f"  confounding: {f} is {c['status'].upper()} — {c['detail']}")
+    if rec["recommended"]:
+        print(f"  RECOMMENDED: {rec['recommended']}  (score "
+              f"{rec['ranked'][0]['score']:.3f}, margin {rec['margin']})")
+    else:
+        print("  NO RECOMMENDATION — " + rec["reason"].split(".")[0])
+
     meta = {"version": __version__, "input": str(a.h5ad), "batch_key": a.batch_key,
             "label_key": a.label_key, "seed": a.seed, "n_cells": int(A.n_obs),
             "n_batches": int(A.obs[a.batch_key].nunique())}
-    p, payload = write(out, rows, figs, meta, absent=missing)
+    p, payload = write(out, scored, figs, meta, absent=missing, rec=rec, conf=conf)
     print("")
     print(f"wrote {p}")
     print(f"      {out}/report.json")
     print("")
-    print("This tool does not choose a method. Read the figures, then decide.")
+    if rec["recommended"]:
+        print("A recommendation is offered above. It is a ranking under one weighting, not a")
+        print("verdict — read the figures before you take it.")
+    else:
+        print("No recommendation was made, and the report says why. Read the figures.")
     return 0
 
 
@@ -107,6 +123,14 @@ def main(argv=None):
     s.add_argument("--k", type=int, default=30)
     s.add_argument("--n-pcs", type=int, default=50)
     s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--bio-factor", action="append", default=None, metavar="OBS_COLUMN",
+                   help="a biological factor the study is ABOUT, repeatable. Each is tested for "
+                        "nesting inside --batch-key; a nested factor blocks the recommendation, "
+                        "because correcting the batch would remove that factor with it")
+    s.add_argument("--w-bio", type=float, default=0.6, metavar="W",
+                   help="weight on biological conservation in the composite score, the rest on "
+                        "batch removal (default 0.6, the scIB convention). THIS IS THE VALUE "
+                        "JUDGEMENT: a different downstream question wants a different weight")
     s.set_defaults(fn=_assess)
     a = ap.parse_args(argv)
     if not getattr(a, "fn", None):

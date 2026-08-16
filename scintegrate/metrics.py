@@ -80,3 +80,90 @@ def assess(emb_before, emb_after, batch, labels, k=30):
         "_per_cell": {"foreign": m["per_cell"], "retained": s["per_cell"],
                       "coherence": c["per_cell"]},
     }
+
+
+# ============================================================ the composite, and when it lies
+
+#: scIB's convention: biological conservation weighted above batch removal, because a method
+#: that mixes perfectly and destroys biology has not integrated anything. Exposed, not hidden -
+#: this weight IS the value judgement, and a different downstream question wants a different one.
+DEFAULT_W_BIO = 0.6
+
+
+def composite(rows, w_bio=DEFAULT_W_BIO):
+    """One score per method: w_bio * biological conservation + (1-w_bio) * batch removal.
+
+    **Batch removal** is the mixing ratio to chance, clipped at 1.0 - past chance is not "more
+    integrated", it is over-correction, and rewarding it would rank a method higher for
+    scattering cells further than random.
+    **Biological conservation** is the mean of kNN retention and label coherence.
+
+    Both terms are in [0, 1] and the score is comparable ACROSS METHODS ON ONE DATASET only.
+    It is not comparable between datasets: the chance level, the label set and the neighbourhood
+    size all differ.
+    """
+    out = []
+    for r in rows:
+        batch_removal = min(float(r["ratio_to_chance"]), 1.0)
+        ret = 1.0 if r["method"] == "none" else float(r["knn_retained_mean"])
+        bio = 0.5 * (ret + float(r["label_coherence_mean"]))
+        out.append({**r, "batch_removal": batch_removal, "bio_conservation": bio,
+                    "score": w_bio * bio + (1.0 - w_bio) * batch_removal, "w_bio": w_bio})
+    return out
+
+
+def confounding(obs, batch_key, bio_factors):
+    """Is a biological factor NESTED inside the batch key?
+
+    This is the question that decides whether a recommendation is safe to make, and no mixing
+    statistic can answer it. If every cell in a batch shares one value of `age`, then `age` is
+    constant within batch, and a method that removes between-batch variation removes the
+    age difference WITH it. The score will happily rank that method first: it mixed the batches,
+    which is exactly what it was asked to do and exactly what destroys the comparison.
+
+    Returns one entry per factor: nested (and therefore unrecoverable by any correction on this
+    key), aliased (the factor and the batch key partition the cells identically), or separable.
+    """
+    import numpy as np
+    b = np.asarray(obs[batch_key].astype(str))
+    out = {}
+    for f in bio_factors:
+        if f not in obs:
+            out[f] = {"status": "absent", "detail": f"no obs column {f!r}"}
+            continue
+        v = np.asarray(obs[f].astype(str))
+        per_batch = {lvl: set(v[b == lvl]) for lvl in set(b)}
+        nested = all(len(s) == 1 for s in per_batch.values())
+        aliased = nested and len(set(b)) == len(set(v))
+        out[f] = {
+            "status": "aliased" if aliased else ("nested" if nested else "separable"),
+            "levels": sorted(set(v))[:6],
+            "detail": (f"every {batch_key} carries exactly one {f}"
+                       if nested else
+                       f"{f} varies within at least one {batch_key}"),
+        }
+    return out
+
+
+def recommend(scored, confounds, w_bio=DEFAULT_W_BIO):
+    """The ranking, and a recommendation ONLY when one is safe to make.
+
+    It refuses - and says why - when a declared biological factor is nested inside the batch
+    key. That is not caution for its own sake: on such a design the highest-scoring method is
+    the one that most thoroughly removed the contrast you intend to measure, and the score
+    cannot tell the difference. A number that ranks confidently in exactly the case where it is
+    wrong is worse than no number.
+    """
+    ranked = sorted(scored, key=lambda r: -r["score"])
+    blocking = {f: c for f, c in confounds.items() if c["status"] in ("nested", "aliased")}
+    if blocking:
+        return {"ranked": ranked, "recommended": None, "w_bio": w_bio,
+                "refused_because": blocking,
+                "reason": ("a declared biological factor is nested inside the batch key, so any "
+                           "correction on that key removes the biology with the batch. The "
+                           "ranking below is still computed and is still readable as 'what each "
+                           "method did'; it must not be read as 'which to use'.")}
+    return {"ranked": ranked, "recommended": ranked[0]["method"] if ranked else None,
+            "w_bio": w_bio, "refused_because": {},
+            "runner_up": ranked[1]["method"] if len(ranked) > 1 else None,
+            "margin": round(ranked[0]["score"] - ranked[1]["score"], 4) if len(ranked) > 1 else None}

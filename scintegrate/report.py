@@ -49,13 +49,46 @@ with the FIGURES in front of you, not the table."""
 def _esc(v): return html.escape("" if v is None else str(v), quote=True)
 
 
-def write(out_dir, rows, figs, meta, absent=()):
+def _verdict(rec, conf):
+    """The recommendation, or the refusal and its reason. Never silence."""
+    rows = "".join(
+        f"<tr><td>{_esc(f)}</td><td>{_esc(c['status'])}</td><td>{_esc(c['detail'])}</td></tr>"
+        for f, c in (conf or {}).items())
+    tbl = (f"<h2>Confounding with the batch key</h2><table>"
+           f"<tr><th>factor</th><th>status</th><th>why</th></tr>{rows}</table>"
+           if rows else "")
+    if not rec:
+        return f'<div class="bad">{REFUSAL}</div>'
+    if rec.get("recommended"):
+        return (f'<div class="warn"><b>Ranking under this weighting: '
+                f'{_esc(rec["recommended"])}</b> scores highest '
+                f'(w_bio = {rec.get("w_bio")}, margin over '
+                f'{_esc(rec.get("runner_up"))} = {rec.get("margin")}).<br><br>'
+                f'<b>This is a ranking, not a verdict.</b> The weight between biological '
+                f'conservation and batch removal is a value judgement about what you intend to '
+                f'measure, and it is set by <code>--w-bio</code>. Read the figures before taking '
+                f'it: a number can say a population was mixed, only the picture distinguishes '
+                f'<i>aligned with its counterparts</i> from <i>dispersed everywhere</i>.</div>'
+                + tbl)
+    blocked = ", ".join(f"<b>{_esc(f)}</b> ({_esc(c['status'])})"
+                        for f, c in rec.get("refused_because", {}).items())
+    return (f'<div class="bad"><b>NO RECOMMENDATION IS MADE, and the ranking below must not be '
+            f'read as one.</b><br><br>{_esc(rec.get("reason",""))}<br><br>'
+            f'Blocking: {blocked}.<br><br>'
+            f'On such a design the highest-scoring method is the one that most thoroughly '
+            f'removed the contrast you intend to measure, and the score cannot tell the '
+            f'difference. A number that ranks confidently in exactly the case where it is wrong '
+            f'is worse than no number.</div>' + tbl)
+
+
+def write(out_dir, rows, figs, meta, absent=(), rec=None, conf=None):
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).astimezone()
     base = rows[0] if rows else {}
 
+    rec = rec or {}; conf = conf or {}
     hdr = ("<tr><th>method</th><th>foreign neighbours</th><th>vs chance</th>"
-           "<th>kNN retained</th><th>label coherence</th></tr>")
+           "<th>kNN retained</th><th>label coherence</th><th>score</th></tr>")
     body = ""
     for r in rows:
         ret = "—" if r["method"] == "none" else f"{100*r['knn_retained_mean']:.1f}%"
@@ -63,7 +96,8 @@ def write(out_dir, rows, figs, meta, absent=()):
                  f"<td>{100*r['foreign_mean']:.1f}%</td>"
                  f"<td>{r['ratio_to_chance']:.2f}x</td>"
                  f"<td>{ret}</td>"
-                 f"<td>{100*r['label_coherence_mean']:.1f}%</td></tr>")
+                 f"<td>{100*r['label_coherence_mean']:.1f}%</td>"
+                 f"<td><b>{r.get('score', float('nan')):.3f}</b></td></tr>")
 
     figs_html = "".join(
         f"<figure><h3 class='sub'>{_esc(name)}</h3>"
@@ -86,7 +120,7 @@ def write(out_dir, rows, figs, meta, absent=()):
 ({_esc(meta.get('batch_key'))}) · k={base.get('k','?')} ·
 scIntegrate {_esc(meta.get('version'))} · generated {now:%Y-%m-%d %H:%M %Z}</p>
 
-<div class="bad">{REFUSAL}</div>
+{_verdict(rec, conf)}
 
 <h2>What each method did, and what it cost</h2>
 <table>{hdr}{body}</table>
@@ -127,6 +161,8 @@ they are inherited from the annotation and every limit recorded there still appl
     p.write_text(html_doc, encoding="utf-8")
     payload = {"generated": now.isoformat(timespec="seconds"), **meta,
                "methods": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows],
-               "not_compared": dict(absent), "chooses_a_method": False}
+               "not_compared": dict(absent),
+               "recommendation": {k: v for k, v in (rec or {}).items() if k != "ranked"},
+               "confounding": conf or {}}
     (out / "report.json").write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
     return p, payload
