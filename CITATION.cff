@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use scIntegrate, please cite it."
+title: "scIntegrate: is integration needed, which method, and one object carrying the answer"
+abstract: >-
+  scIntegrate compares single-cell integration methods including the un-integrated baseline,
+  measures mixing per cell type against chance for that population's own batch composition,
+  benchmarks with scIB, names a default embedding, and states separately - computed from the
+  experimental design - what that embedding may be used for.
+type: software
+authors:
+  - given-names: Jiaen
+    family-names: Lin
+version: 0.3.0
+license: MIT
+repository-code: "https://github.com/JiaenLin/scIntegrate"
+keywords:
+  - single-cell
+  - integration
+  - batch-effect
+  - scIB
+  - scVI
