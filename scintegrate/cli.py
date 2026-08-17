@@ -42,7 +42,7 @@ def _load(a):
     if D["hvg"] is not None:
         print(f"  hvg    : {int(D['hvg'].sum()):,} flagged in var, reused verbatim")
 
-    D["factors"], D["design_note"] = {}, "no --design given"
+    D["factors"], D["covariates"], D["design_note"] = {}, {}, "no --design given"
     if a.design:
         table, key, cols = inputs.read_design(a.design, set(D["batch"]), a.design_sample_col)
         want = list(a.bio_factor or cols)
@@ -50,10 +50,19 @@ def _load(a):
         if bad:
             raise inputs.Refuse(f"--bio-factor {bad} not in {a.design}: it offers {cols}")
         import numpy as np
-        for f in want:
-            D["factors"][f] = np.array([table[s][f] for s in D["batch"]])
-        D["design_note"] = (f"{a.design} keyed on {key!r}; factor(s) "
-                            + ", ".join(f"{f} ({len(set(D['factors'][f]))} levels)" for f in want))
+        # EVERY design column is joined onto the cells and travels in the deliverable - a
+        # technical covariate is exactly what a later stage needs in order to model rather than
+        # remove it, and a covariate joined on afterwards by position is one nobody can check.
+        # Only the DECLARED bio factors drive the assessment and the constraint, because those
+        # two are statements about what the study is for.
+        for f in cols:
+            D["covariates"][f] = np.array([table[s][f] for s in D["batch"]])
+        D["factors"] = {f: D["covariates"][f] for f in want}
+        other = [f for f in cols if f not in want]
+        D["design_note"] = (
+            f"{a.design} keyed on {key!r}; biological factor(s) "
+            + ", ".join(f"{f} ({len(set(D['factors'][f]))} levels)" for f in want)
+            + (f"; carried but not declared biological: {', '.join(other)}" if other else ""))
         print(f"  design : {D['design_note']}")
     return D
 
@@ -364,7 +373,7 @@ def _integrate(a):
     # ---- the object
     print("\nwriting the deliverable", flush=True)
     obs_keep = [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
-    for f, v in D["factors"].items():
+    for f, v in D["covariates"].items():
         if f not in A.obs:
             A.obs[f] = v
         obs_keep.append(f)

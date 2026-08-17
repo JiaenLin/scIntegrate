@@ -301,8 +301,9 @@ def write_integrate(out_dir, payload, figs):
                 f"it. Every other method's embedding is kept in the same object.<br><br>"
                 f"<b>This is a ranking under one weighting, not a verdict.</b> The weight between "
                 f"biological conservation and batch correction is "
-                f"<code>--w-bio {_esc(payload.get('w_bio'))}</code>. <b>That weight is the value "
-                f"judgement</b>, not a constant of nature — it asserts how much residual batch "
+                f"<code>--w-bio {_esc(payload.get('w_bio'))}</code>. "
+                f"<b>That weight is the value judgement</b>"
+                f", not a constant of nature — it asserts how much residual batch "
                 f"structure is worth trading for retained biology, and a different downstream "
                 f"question wants a different answer. It is exposed on the command line for "
                 f"exactly that reason.</div>")
