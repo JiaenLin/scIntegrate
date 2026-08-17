@@ -24,7 +24,18 @@ REFUSE = 2
 def _load(a):
     """Open the object, resolve the keys, join the design. Refusals are printed and re-raised."""
     from . import inputs
-    sent = tuple(s for s in (a.label_sentinel or []) if s)
+    # NOT `a.label_sentinel or []`. argparse leaves an `append` option as None when it is not
+    # given, and collapsing that to an empty tuple passes "no sentinels" down to inputs.read,
+    # OVERRIDING its documented default instead of falling back to it. The protection the tool
+    # advertises was therefore off unless the flag was passed explicitly, and the symptom was a
+    # results table listing EXCLUDED and UNRESOLVED as cell types.
+    #   None            -> not given, use the documented default
+    #   ['']            -> deliberately cleared, use nothing
+    #   ['A', 'B']      -> use those
+    if a.label_sentinel is None:
+        sent = inputs.DEFAULT_SENTINELS
+    else:
+        sent = tuple(s for s in a.label_sentinel if s)
     D = inputs.read(a.h5ad, a.batch_key, a.label_key, l1_key=a.l1_key,
                     sentinels=sent, coarse_from_path=a.coarse_from_path)
     A = D["adata"]

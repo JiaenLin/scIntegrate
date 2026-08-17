@@ -92,6 +92,13 @@ check("sentinel cells are NOT dropped from the array - they stay in the object",
 check("a declared-but-absent sentinel is not an error",
       label_view(obs, "path", ("NOPE",))[2] == {})
 check("clearing the sentinels is possible", int(label_view(obs, "path", ())[1].sum()) == 12)
+# The default has to survive the CLI, not merely exist in inputs.py. `a.label_sentinel or []`
+# collapsed argparse's None into an empty tuple and passed "no sentinels" down, overriding the
+# default rather than falling back to it - so EXCLUDED and UNRESOLVED were measured as cell types.
+check("the CLI falls back to the default rather than overriding it with empty",
+      "if a.label_sentinel is None:" in cli and "sent = inputs.DEFAULT_SENTINELS" in cli)
+check("and does NOT collapse None with `or`",
+      "a.label_sentinel or []" not in cli)
 
 section("E. a coarse level is measured, or it is labelled a truncation")
 v, note = coarse_labels(obs, "path", l1_key="L1")
