@@ -97,7 +97,16 @@ def check_counts(A, layer="counts"):
                        + (", ".join(map(repr, A.layers.keys())) or "none"))
     X = A.layers[layer]
     sub = X[:2000] if X.shape[0] > 2000 else X
-    d = sub.data if hasattr(sub, "data") else np.asarray(sub).ravel()
+    # `hasattr(sub, "data")` is TRUE for a dense numpy array - ndarray.data is a memoryview, which
+    # has no .size and is not the stored values. Only a scipy sparse matrix means by `.data` what
+    # is meant here, so dense is tested for FIRST rather than inferred from the absence of an
+    # attribute that both types have.
+    if isinstance(sub, np.ndarray):
+        d = sub.ravel()
+    elif hasattr(sub, "data") and not isinstance(sub.data, memoryview):
+        d = np.asarray(sub.data)                                  # scipy sparse: stored values
+    else:
+        d = np.asarray(sub).ravel()
     if d.size == 0:
         return False, f"layers[{layer!r}] has no stored values"
     frac = float(np.mean(d == np.rint(d)))

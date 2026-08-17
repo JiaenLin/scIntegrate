@@ -36,7 +36,8 @@ check("the version is a plain three-part number", re.fullmatch(r"\d+\.\d+\.\d+",
       vfile)
 
 # every extra named in the install docs must exist as an extra, or the documented command fails
-extras = set(re.findall(r"^(\w+) = \[", pyproj.split("[project.optional-dependencies]")[1], re.M))
+block = pyproj.split("[project.optional-dependencies]")[1].split("\n[")[0]
+extras = set(re.findall(r"^(\w+) = \[", block, re.M))
 readme = (ROOT / "README.md").read_text()
 documented = set(re.findall(r"pip install -e '\.\[([a-z,]+)\]'", readme))
 named = {e for group in documented for e in group.split(",")}
