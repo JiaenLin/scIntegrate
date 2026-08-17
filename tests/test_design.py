@@ -223,6 +223,16 @@ check("NaN is treated as an ABSENCE, never averaged in",
       aggregate(m3)["total"] is None)
 check("every metric has a stated meaning for the report",
       set(MEANING) >= set(BIO + BATCH))
+# A graph-correcting method has no corrected coordinates. Computing a silhouette or a PCR on the
+# uncorrected space it was handed would report the BASELINE's score as that method's own.
+bench_src = (ROOT / "scintegrate/benchmark.py").read_text()
+check("embedding metrics are absent by KIND for a graph method",
+      'if kind == "graph":' in bench_src and 'if kind != "graph":' in bench_src)
+check("and the absence says why, rather than being a blank",
+      "would\n                             \"report the baseline's score as this method's\"" in bench_src
+      or "report the baseline's score as this method's" in bench_src)
+check("isolated_labels_f1 is NOT excluded - it clusters, so it is defined either way",
+      "isolated_labels_f1 CLUSTERS" in bench_src)
 rows_ = [{"method": "none", "aggregate": aggregate(m)},
          {"method": "harmony", "aggregate": aggregate({**m, "nmi": {"value": 0.9, "why": None}})}]
 ch = choose_default(rows_)

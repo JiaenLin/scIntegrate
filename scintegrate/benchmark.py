@@ -97,6 +97,23 @@ def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsampl
     type_ = "knn" if kind == "graph" else "embed"
     out = {}
 
+    # A `graph` method HAS NO CORRECTED COORDINATES, so every metric that reads one must be an
+    # ABSENCE rather than a number. `prepare` puts the uncorrected PCA in X_emb for such a method,
+    # because scIB's graph metrics still want a representation present - and if these four were
+    # computed anyway they would silently measure the UNCORRECTED space and be reported as the
+    # graph method's own scores. BBKNN would inherit `none`'s silhouettes and its PCR would come
+    # out at no-change, which flatters or damns it for a correction it never made to that space.
+    #
+    # The consequence is deliberate and visible: the aggregate is then taken over fewer metrics,
+    # `choose_default` reports the totals as NOT comparable, and the report says so. A method that
+    # cannot be scored on the same basis should look different, not equal.
+    if kind == "graph":
+        for m in ("asw_label", "asw_batch", "isolated_labels_asw", "pcr"):
+            out[m] = {"value": None,
+                      "why": "not defined for a graph-correcting method: it returns no corrected "
+                             "coordinate space, and computing this on the uncorrected one would "
+                             "report the baseline's score as this method's"}
+
     # --- clustering, for NMI and ARI. scIB's convention is to optimise the resolution against
     # the label set rather than fix one, because a single resolution flatters whichever method
     # happens to produce clusters at that granularity.
@@ -121,21 +138,25 @@ def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsampl
         for m in ("nmi", "ari"):
             out[m] = {"value": None, "why": f"no clustering: {cluster_why}"}
 
-    _guard("asw_label", lambda: M.silhouette(A_post, label_key, "X_emb"), out)
+    # isolated_labels_f1 CLUSTERS rather than measuring a distance, so it is defined for a graph
+    # method too - it is not in the absent-by-kind list above.
     _guard("isolated_labels_f1",
            lambda: M.isolated_labels_f1(A_post, label_key, batch_key, "X_emb", verbose=False), out)
-    _guard("isolated_labels_asw",
-           lambda: M.isolated_labels_asw(A_post, label_key, batch_key, "X_emb", verbose=False), out)
     _guard("clisi", lambda: M.clisi_graph(A_post, label_key, type_, use_rep="X_emb",
                                          subsample=lisi_subsample, n_cores=n_cores), out)
-
     _guard("graph_connectivity", lambda: M.graph_connectivity(A_post, label_key), out)
-    _guard("asw_batch", lambda: M.silhouette_batch(A_post, batch_key, label_key, "X_emb",
-                                                  verbose=False), out)
     _guard("ilisi", lambda: M.ilisi_graph(A_post, batch_key, type_, use_rep="X_emb",
                                          subsample=lisi_subsample, n_cores=n_cores), out)
     _guard("kbet", lambda: M.kBET(A_post, batch_key, label_key, type_, embed="X_emb"), out)
-    _guard("pcr", lambda: M.pcr_comparison(A_pre, A_post, batch_key, embed="X_emb"), out)
+
+    if kind != "graph":
+        _guard("asw_label", lambda: M.silhouette(A_post, label_key, "X_emb"), out)
+        _guard("asw_batch", lambda: M.silhouette_batch(A_post, batch_key, label_key, "X_emb",
+                                                      verbose=False), out)
+        _guard("isolated_labels_asw",
+               lambda: M.isolated_labels_asw(A_post, label_key, batch_key, "X_emb",
+                                             verbose=False), out)
+        _guard("pcr", lambda: M.pcr_comparison(A_pre, A_post, batch_key, embed="X_emb"), out)
     return out
 
 
