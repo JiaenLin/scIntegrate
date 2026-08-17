@@ -70,6 +70,58 @@ def panel(views, colour_by, order, colours, title, out, s=1.0):
     return out
 
 
+def mixing_bars(rows, factor_names, threshold, out):
+    """Per cell type: how well the libraries mix inside it, beside each declared factor.
+
+    The figure exists because the comparison is the finding and a table hides it. A cell type
+    whose libraries do not mix is batch structure. A cell type where the AGE GROUPS also do not
+    mix is the same structure wearing two names, and a correction on the library key removes the
+    contrast the study is for. Side-by-side bars make that pairing visible; two columns of
+    numbers do not.
+
+    Returns None when nothing was measurable, so the caller reports a named absence rather than
+    an empty panel.
+    """
+    meas = [r for r in rows if r.get("measured") and r["batch"].get("ratio") is not None]
+    if not meas:
+        return None
+    p = _plt()
+    import numpy as np
+    labs = [r["label"] for r in meas]
+    series = [("batch", [r["batch"]["ratio"] for r in meas], "#c0504d")]
+    palette = ["#4f81bd", "#9bbb59", "#8064a2", "#f79646"]
+    for i, f in enumerate(factor_names):
+        vals = [(r.get("factors") or {}).get(f, {}).get("ratio") for r in meas]
+        if any(v is not None for v in vals):
+            series.append((f, [np.nan if v is None else v for v in vals],
+                           palette[i % len(palette)]))
+
+    n, m = len(labs), len(series)
+    h = max(2.6, 0.42 * n * max(1, m) / 2 + 1.4)
+    fig, ax = p.subplots(figsize=(8.4, h))
+    y = np.arange(n)
+    bh = 0.8 / m
+    for j, (name, vals, c) in enumerate(series):
+        ax.barh(y + (j - (m - 1) / 2) * bh, vals, height=bh, color=c, label=name,
+                edgecolor="none")
+    ax.axvline(1.0, color=INK, lw=1.0)
+    ax.axvline(threshold, color=INK, lw=1.0, ls="--")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labs, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel("foreign-neighbour share / chance for that population   "
+                  "(1.0 = fully mixed)", fontsize=9)
+    ax.set_xlim(0, max(1.08, float(np.nanmax([v for _, vs, _ in series for v in vs])) * 1.05))
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(frameon=False, fontsize=8, ncol=m, loc="lower right")
+    ax.set_title(f"Mixing within each cell type   —   solid line 1.0 = chance, "
+                 f"dashed = declared threshold {threshold}", fontsize=10, loc="left")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    p.close(fig)
+    return out
+
+
 def highlight(views, mask, label, out, s_bg=0.8, s_hi=3.0):
     """One library (or group) against everything else in grey, in every method's embedding.
 

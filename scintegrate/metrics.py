@@ -82,34 +82,18 @@ def assess(emb_before, emb_after, batch, labels, k=30):
     }
 
 
-# ============================================================ the composite, and when it lies
+# ============================================================ the design, which no metric sees
 
-#: scIB's convention: biological conservation weighted above batch removal, because a method
+#: scIB's convention: biological conservation weighted above batch correction, because a method
 #: that mixes perfectly and destroys biology has not integrated anything. Exposed, not hidden -
 #: this weight IS the value judgement, and a different downstream question wants a different one.
+#: The aggregation that uses it lives in benchmark.py, where the scIB metrics are.
 DEFAULT_W_BIO = 0.6
 
-
-def composite(rows, w_bio=DEFAULT_W_BIO):
-    """One score per method: w_bio * biological conservation + (1-w_bio) * batch removal.
-
-    **Batch removal** is the mixing ratio to chance, clipped at 1.0 - past chance is not "more
-    integrated", it is over-correction, and rewarding it would rank a method higher for
-    scattering cells further than random.
-    **Biological conservation** is the mean of kNN retention and label coherence.
-
-    Both terms are in [0, 1] and the score is comparable ACROSS METHODS ON ONE DATASET only.
-    It is not comparable between datasets: the chance level, the label set and the neighbourhood
-    size all differ.
-    """
-    out = []
-    for r in rows:
-        batch_removal = min(float(r["ratio_to_chance"]), 1.0)
-        ret = 1.0 if r["method"] == "none" else float(r["knn_retained_mean"])
-        bio = 0.5 * (ret + float(r["label_coherence_mean"]))
-        out.append({**r, "batch_removal": batch_removal, "bio_conservation": bio,
-                    "score": w_bio * bio + (1.0 - w_bio) * batch_removal, "w_bio": w_bio})
-    return out
+# There is deliberately NO ranking function in this module. Ranking happens once, in
+# benchmark.py, on the scIB metrics. A second composite built from the three kNN measurements
+# above would rank the same methods by a different rule, and two ranking functions of which one
+# is wired up is how a report comes to disagree with itself about which method won.
 
 
 def confounding(obs, batch_key, bio_factors):
@@ -144,26 +128,9 @@ def confounding(obs, batch_key, bio_factors):
         }
     return out
 
-
-def recommend(scored, confounds, w_bio=DEFAULT_W_BIO):
-    """The ranking, and a recommendation ONLY when one is safe to make.
-
-    It refuses - and says why - when a declared biological factor is nested inside the batch
-    key. That is not caution for its own sake: on such a design the highest-scoring method is
-    the one that most thoroughly removed the contrast you intend to measure, and the score
-    cannot tell the difference. A number that ranks confidently in exactly the case where it is
-    wrong is worse than no number.
-    """
-    ranked = sorted(scored, key=lambda r: -r["score"])
-    blocking = {f: c for f, c in confounds.items() if c["status"] in ("nested", "aliased")}
-    if blocking:
-        return {"ranked": ranked, "recommended": None, "w_bio": w_bio,
-                "refused_because": blocking,
-                "reason": ("a declared biological factor is nested inside the batch key, so any "
-                           "correction on that key removes the biology with the batch. The "
-                           "ranking below is still computed and is still readable as 'what each "
-                           "method did'; it must not be read as 'which to use'.")}
-    return {"ranked": ranked, "recommended": ranked[0]["method"] if ranked else None,
-            "w_bio": w_bio, "refused_because": {},
-            "runner_up": ranked[1]["method"] if len(ranked) > 1 else None,
-            "margin": round(ranked[0]["score"] - ranked[1]["score"], 4) if len(ranked) > 1 else None}
+# `confounding` classifies; it does not veto. A per-animal factor is NESTED inside a per-animal
+# batch key by construction - every animal has one age - so a veto keyed on nesting would fire on
+# every study of this shape and carry no information. What nesting actually decides is what the
+# corrected embedding may be used for AFTERWARDS, which cli._constraint writes and the report
+# prints as its own section. The distinction matters: `aliased` means the batch key IS the factor
+# at the same granularity, and there a correction on that key erases the contrast entirely.

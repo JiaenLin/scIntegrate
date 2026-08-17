@@ -1,0 +1,77 @@
+# The environment scIntegrate's results were produced in, CAPTURED FROM A WORKING INSTALL rather
+# than composed from bounds. Every version here ran a ten-library cohort end to end.
+#
+# WHY A LOCK AND NOT A RANGE. `pyproject.toml` declares `scanpy>=1.10` because the measurement
+# layer genuinely tolerates a range. Its RESULTS do not: neither UMAP nor Leiden is
+# bit-reproducible across versions, and a variational model's latent space is not reproducible
+# across a change of torch. Bounds are what scIntegrate needs to IMPORT; this file is what a
+# result needs to REPRODUCE. Use it when you intend to compare against a published number.
+#
+# THE ONE THING WORTH KNOWING BEFORE YOU INSTALL THIS. `scvi-tools` brings torch and roughly
+# sixty transitive packages; `scib` brings five. Measured against the analysis stack below, the
+# two together changed NOTHING that was already installed - they are additive. That is why they
+# can be added to an environment that already produced results without invalidating them, and it
+# is worth re-checking with `pip install --dry-run` on your own stack rather than assumed.
+name: scintegrate
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12.12
+  - pip
+  - pip:
+      # --- the measurement layer. scIntegrate itself needs only these two.
+      - numpy==2.4.6
+      - scikit-learn==1.9.0
+
+      # --- reading .h5ad, computing a PCA and a UMAP: everything except `doctor`
+      - anndata==0.13.2
+      - scanpy==1.12.3
+      - scipy==1.18.0
+      - pandas==3.0.5
+      - h5py==3.16.0
+      - numba==0.66.0
+      - umap-learn==0.5.12
+      - natsort==8.4.0
+      - packaging==26.1
+      # igraph and leidenalg are scIB's, not scanpy's: the NMI and ARI metrics cluster the
+      # corrected space, and scanpy imports Leiden lazily - so a missing one surfaces after the
+      # models have trained rather than before.
+      - igraph==1.0.0
+      - leidenalg==0.12.0
+
+      # --- figures. The report is written WITHOUT these: every figure becomes a named absence
+      # and the document is still produced. Installed here because you almost certainly want the
+      # pictures, not because the tool needs them to run.
+      - matplotlib==3.11.1
+      - seaborn==0.13.2
+
+      # --- the methods, one line each. Any of them may be omitted; the method is then named in
+      # the report as not compared, rather than quietly missing from the comparison.
+      - harmonypy==0.0.10
+      - bbknn==1.6.0
+
+      # --- the benchmark. Without scib the run still happens and the kNN metrics are still
+      # reported, but NO DEFAULT EMBEDDING IS CHOSEN, because the choice is defined as the scIB
+      # total. scikit-misc is its highly-variable-gene backend.
+      - scib==1.1.7
+      - scikit-misc==0.5.2
+
+      # --- scVI and scANVI. One package, two models. This is the heavy half of the install.
+      # torch is pinned because a latent space is not reproducible across a change of it.
+      - scvi-tools==1.5.0.post1
+      - torch==2.13.0
+      - lightning==2.6.5
+      - pytorch-lightning==2.6.5
+      - torchmetrics==1.9.0
+      - pyro-ppl==1.9.1
+
+# NOT PINNED HERE, AND DELIBERATELY:
+#
+#   rpy2 + the kBET R package. kBET is the one scIB batch metric that needs R. It is expected to
+#   be absent, is reported as absent with its reason, and the aggregate records that it was taken
+#   over one fewer metric. Pinning an R toolchain into a python lock to recover a single metric
+#   costs every user of this file more than the metric is worth.
+#
+#   A CUDA build. `torch==2.13.0` resolves to the default wheel for your platform, which carries
+#   CUDA on linux/x86_64 and does not on macOS. scVI and scANVI run either way; `scintegrate
+#   doctor` reports which device torch can actually see, so the difference is visible before a
+#   run rather than inferred from its duration.
