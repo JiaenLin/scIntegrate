@@ -193,10 +193,18 @@ python tests/test_design.py     # the design locks; no data and no pytest needed
 python tests/test_version.py
 ```
 
-## Running on a cluster
+## Documentation
 
-`docs/PBSPRO.md` is a working PBS Pro recipe: queue sizing, why the GPU request must be exact, and
-where the logs have to go so they survive the job. Nothing in it is specific to one site.
+| doc | what is in it |
+|---|---|
+| `docs/QUICKSTART.md` | the three commands, in the order the questions arrive |
+| `docs/METRICS.md` | what every number means, and what it cannot mean |
+| `docs/OUTPUTS.md` | which file is the answer, and which files must not be used |
+| `docs/PBSPRO.md` | a working PBS Pro recipe: sizing, the exact GPU request, where logs must go |
+| `KNOWN_ISSUES.md` | measured, not suspected — kBET's R dependency, a CUDA wheel newer than the driver, and what a named default invites |
+
+Nothing in `PBSPRO.md` is specific to one site: every number you must supply is named, with the way
+to read it off your own scheduler beside it.
 
 ## What it cannot tell you
 
