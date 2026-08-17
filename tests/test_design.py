@@ -97,8 +97,20 @@ check("clearing the sentinels is possible", int(label_view(obs, "path", ())[1].s
 # default rather than falling back to it - so EXCLUDED and UNRESOLVED were measured as cell types.
 check("the CLI falls back to the default rather than overriding it with empty",
       "if a.label_sentinel is None:" in cli and "sent = inputs.DEFAULT_SENTINELS" in cli)
+
+
+def _code(src):
+    """Source with comment-only lines dropped.
+
+    A grep for a bad pattern matches the COMMENT that explains why the pattern is not used, so
+    the test fails on its own documentation. That happened twice while writing these checks,
+    which is twice more than it needed to.
+    """
+    return "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith("#"))
+
+
 check("and does NOT collapse None with `or`",
-      "a.label_sentinel or []" not in cli)
+      "a.label_sentinel or []" not in _code(cli))
 
 section("E. a coarse level is measured, or it is labelled a truncation")
 v, note = coarse_labels(obs, "path", l1_key="L1")
@@ -242,8 +254,6 @@ check("the fallback computes over ALL genes with no class excluded",
       "no class excluded" in msrc)
 check("and the docstring says a mask must never be that route",
       "never become the route" in msrc)
-# Grepping for the bare string would match the COMMENT that explains why it is not used, which is
-# a test failing on its own documentation. Match the assignment instead.
 import re as _re                                                                           # noqa
 check("neither path clones the full object for a light read",
       _re.search(r"^\s*\w+\s*=\s*adata\.copy\(\)", msrc, _re.M) is None)
