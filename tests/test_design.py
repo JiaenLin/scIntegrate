@@ -235,8 +235,12 @@ check("the fallback computes over ALL genes with no class excluded",
       "no class excluded" in msrc)
 check("and the docstring says a mask must never be that route",
       "never become the route" in msrc)
+# Grepping for the bare string would match the COMMENT that explains why it is not used, which is
+# a test failing on its own documentation. Match the assignment instead.
+import re as _re                                                                           # noqa
 check("neither path clones the full object for a light read",
-      "adata.copy()" not in msrc)
+      _re.search(r"^\s*\w+\s*=\s*adata\.copy\(\)", msrc, _re.M) is None)
+check("and each says what it builds instead", "A light object" in msrc)
 
 section("N. an absence is named, never silently substituted")
 from scintegrate.env import CAPABILITIES, probe, SCIB_OPTIONAL                             # noqa

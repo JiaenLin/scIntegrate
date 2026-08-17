@@ -145,9 +145,15 @@ def aggregate(metrics, w_bio=0.6):
     A total from eight metrics must never be silently comparable with a total from nine, so the
     counts travel with the numbers.
     """
+    def _real(v):
+        # NaN is an absence wearing a number's clothes, and it propagates through any mean it
+        # enters. `_guard` already converts it, but this must hold whatever built the dict -
+        # a metric dict assembled anywhere else must not be able to poison an aggregate.
+        return v is not None and v == v
+
     def mean_of(keys):
         vals = [metrics[k]["value"] for k in keys
-                if k in metrics and metrics[k]["value"] is not None]
+                if k in metrics and _real(metrics[k]["value"])]
         return (sum(vals) / len(vals) if vals else None), len(vals), len(keys)
 
     bio, n_bio, t_bio = mean_of(BIO)
@@ -157,7 +163,8 @@ def aggregate(metrics, w_bio=0.6):
         total = w_bio * bio + (1.0 - w_bio) * bat
     return {"bio": bio, "batch": bat, "total": total, "w_bio": w_bio,
             "n_bio": n_bio, "of_bio": t_bio, "n_batch": n_bat, "of_batch": t_bat,
-            "absent": {k: v["why"] for k, v in metrics.items() if v["value"] is None}}
+            "absent": {k: (v["why"] or "the metric returned NaN")
+                       for k, v in metrics.items() if not _real(v["value"])}}
 
 
 def choose_default(rows):
@@ -167,7 +174,10 @@ def choose_default(rows):
     numbers of metrics are not ranked against each other silently. If they differ, the fact is
     returned and the report states it.
     """
-    scored = [r for r in rows if r.get("aggregate", {}).get("total") is not None]
+    def _real(v):
+        return v is not None and v == v
+
+    scored = [r for r in rows if _real(r.get("aggregate", {}).get("total"))]
     if not scored:
         return {"default": None, "reason": "no method produced a complete scIB total",
                 "ranked": [], "comparable": True}
