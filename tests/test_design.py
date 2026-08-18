@@ -346,6 +346,17 @@ check("figures are referenced relatively, so the document travels with them",
 check("every table names its source file on disk", rep.count("tables/") >= 6)
 
 section("P. every panel is drawn at one scale")
+figsrc = (ROOT / "scintegrate/figures.py").read_text()
+check("one UMAP min_dist for every view, declared in one place",
+      "MIN_DIST = 0.2" in figsrc)
+check("no UMAP is drawn without it",
+      figsrc.count("sc.tl.umap(") == figsrc.count("min_dist=min_dist"))
+check("the graph method's view uses the same value, or it is not comparable",
+      "sc.tl.umap(r[\"adata\"], min_dist=a.min_dist" in cli)
+check("it is exposed, because it is a layout choice and not a constant",
+      '"--min-dist"' in cli and "LAYOUT parameter" in cli)
+check("and recorded, so a figure can be traced to the value that drew it",
+      '"umap_min_dist"' in cli)
 fig = (ROOT / "scintegrate/figures.py").read_text()
 check("a shared limit is computed", "_same_scale" in fig)
 check("it is applied to every axis", fig.count("set_xlim(xlo, xhi)") >= 2)

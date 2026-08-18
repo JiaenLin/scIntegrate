@@ -21,7 +21,13 @@ def _plt():
     import matplotlib.pyplot as p; return p
 
 
-def _umap(emb, seed=0):
+#: UMAP min_dist for every view this tool draws. 0.2 rather than scanpy's 0.5, so the panels match
+#: the joint embedding the annotation ships and the two can be read against each other. It is a
+#: LAYOUT parameter: no metric, count or label depends on it. Recorded in the provenance.
+MIN_DIST = 0.2
+
+
+def _umap(emb, seed=0, min_dist=MIN_DIST):
     """A 2-D view. Methods returning a PC space get one computed; BBKNN already returns 2-D."""
     emb = np.asarray(emb)
     if emb.shape[1] == 2:
@@ -30,7 +36,7 @@ def _umap(emb, seed=0):
     A = ad.AnnData(X=np.zeros((emb.shape[0], 1), dtype="float32"))
     A.obsm["X_pca"] = emb
     sc.pp.neighbors(A, use_rep="X_pca", random_state=seed)
-    sc.tl.umap(A, random_state=seed)
+    sc.tl.umap(A, min_dist=min_dist, random_state=seed)
     return np.asarray(A.obsm["X_umap"])
 
 

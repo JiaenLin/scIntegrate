@@ -132,6 +132,7 @@ def _provenance(payload, extra=()):
             ("design", _esc(payload.get("design"))),
             ("k", _esc(payload.get("k"))),
             ("n_pcs", _esc(payload.get("n_pcs"))),
+            ("UMAP min_dist", _esc(payload.get("umap_min_dist"))),
             ("seed", _esc(payload.get("seed"))),
             ("scintegrate", _esc(payload.get("version"))),
             ("generated", _esc(payload.get("generated")))]

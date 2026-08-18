@@ -78,15 +78,16 @@ def _load(a):
     return D
 
 
-def _views(results, seed=0):
+def _views(results, seed=0, min_dist=None):
     """A 2-D view per method, computed once and shared by every figure."""
-    from .figures import _umap
+    from .figures import MIN_DIST, _umap
+    md = MIN_DIST if min_dist is None else min_dist
     out = {}
     for r in results:
         if r.get("umap") is not None:
             out[r["method"]] = r["umap"]
         elif r.get("emb") is not None:
-            out[r["method"]] = _umap(r["emb"], seed=seed)
+            out[r["method"]] = _umap(r["emb"], seed=seed, min_dist=md)
     return out
 
 
@@ -201,7 +202,8 @@ def _assess(a):
     if D["sentinels"]:
         _sentinel_tables(out, D, a)
 
-    figs = _draw(out, {"none": _views([{"method": "none", "emb": emb}], a.seed)["none"]},
+    figs = _draw(out, {"none": _views([{"method": "none", "emb": emb}], a.seed,
+                                      a.min_dist)["none"]},
                  D, a, tag="uncorrected")
     figs += _draw_assessment(out, rows, fnames, a)
 
@@ -291,12 +293,16 @@ def _integrate(a):
     print("\ndrawing a 2-D view per method", flush=True)
     import scanpy as sc
     from .figures import _umap
+    print(f"  UMAP min_dist={a.min_dist} for every method, so the panels are comparable")
     for r in results:
         if r["kind"] == "graph":
-            sc.tl.umap(r["adata"], random_state=a.seed)
+            # Same min_dist as every other panel. A graph method's view drawn at a
+            # different layout parameter is not comparable with the ones beside it, and the
+            # figures are explicitly drawn at one scale so they can be compared.
+            sc.tl.umap(r["adata"], min_dist=a.min_dist, random_state=a.seed)
             r["umap"] = np.asarray(r["adata"].obsm["X_umap"])
         else:
-            r["umap"] = _umap(r["emb"], seed=a.seed)
+            r["umap"] = _umap(r["emb"], seed=a.seed, min_dist=a.min_dist)
 
     # ---- THE OBJECT IS WRITTEN NOW, BEFORE SCORING ---------------------------------------
     #
@@ -380,7 +386,7 @@ def _integrate(a):
     constraint = _constraint(D, a, chosen)
 
     # ---- figures
-    views = _views(results, a.seed)
+    views = _views(results, a.seed, a.min_dist)
     figs = _draw(out, views, D, a, tag="methods")
     figs += _draw_assessment(out, arows, list(D["factors"]), a)
 
@@ -417,7 +423,8 @@ def _integrate(a):
     # ---- the object
     print("\nwriting the deliverable", flush=True)
     obs_keep = obs_keep_early
-    prov = {"tool": "scintegrate", "input": str(a.h5ad), "batch_key": a.batch_key,
+    prov = {"tool": "scintegrate", "input": str(a.h5ad), "umap_min_dist": a.min_dist,
+            "batch_key": a.batch_key,
             "label_key": a.label_key, "l1_key": a.l1_key or "", "seed": a.seed,
             "k": a.k, "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
             "methods_compared": ok, "methods_absent": missing,
@@ -447,6 +454,7 @@ def _integrate(a):
     payload = {"command": "integrate", "n_cells": int(A.n_obs), "n_genes": int(A.n_vars),
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
                "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
+               "umap_min_dist": a.min_dist,
                "design": D["design_note"], "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "counts": D["counts_note"],
                "methods": [{"method": r["method"], "kind": r["kind"], "note": r["note"],
@@ -743,6 +751,11 @@ def _common(s):
                    help="a cell type is measured only if it has at least M x k cells; below that "
                         "the neighbourhood is most of the population and the ratio approaches "
                         "1.0 from smallness rather than from mixing (default 3)")
+    s.add_argument("--min-dist", type=float, default=0.2, metavar="D",
+                   help="UMAP min_dist for every view drawn (default 0.2). A LAYOUT parameter: "
+                        "no metric, count or label depends on it. Lower packs each population "
+                        "tighter; it matches the joint embedding the annotation ships, so the "
+                        "panels here and there can be read against each other")
     s.add_argument("--indicates-below", type=float, default=0.80, metavar="R",
                    help="a within-type mixing ratio below R x chance is called batch structure. "
                         "A DECLARED threshold, not a discovered one (default 0.80)")
