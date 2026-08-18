@@ -283,6 +283,9 @@ check("the scIB clustering grid is tunable, and says what that costs",
 check("the leiden flavour can be restored to scIB's literal behaviour",
       '"--no-fast-leiden"' in cli)
 
+check("a None key in .layers cannot kill a finished run",
+      "_names(obj.layers)" in cli and "ENUMERATE A `None` KEY" in cli)
+
 section("N2. the scIB compatibility shims are scoped, not global")
 bsrc = (ROOT / "scintegrate/benchmark.py").read_text()
 check("pd.value_counts is restored for scib, which calls a pandas-1 API",

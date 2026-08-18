@@ -433,9 +433,16 @@ def _integrate(a):
                      constraint=constraint, provenance=prov)
     emit.write_h5ad(obj, op)          # rewritten in place, now WITH the benchmark
     print(f"  {op}  ({op.stat().st_size / 1e9:.2f} GB)")
-    print(f"  obs: {', '.join(obj.obs.columns)}")
-    print(f"  layers: {', '.join(obj.layers)}")
-    print(f"  obsm: {', '.join(obj.obsm)}")
+    # `.layers` CAN ENUMERATE A `None` KEY that is really `.X` - anndata says so in a deprecation
+    # warning - so a bare join over it raises TypeError. This killed a completed run at its last
+    # print: every method trained, every metric computed, the 3 GB object already on disk, and
+    # the process died formatting a progress line.
+    def _names(x):
+        return ", ".join(sorted(str(k) for k in x if k is not None)) or "(none)"
+
+    print(f"  obs: {_names(obj.obs.columns)}")
+    print(f"  layers: {_names(obj.layers)}")
+    print(f"  obsm: {_names(obj.obsm)}")
 
     payload = {"command": "integrate", "n_cells": int(A.n_obs), "n_genes": int(A.n_vars),
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
