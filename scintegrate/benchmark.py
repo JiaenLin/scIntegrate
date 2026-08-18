@@ -43,6 +43,37 @@ MEANING = {
 }
 
 
+class scib_pandas_compat:
+    """Restore `pandas.value_counts` for the duration of a scIB call, then remove it again.
+
+    scib 1.1.7 calls the MODULE-LEVEL `pd.value_counts(...)`, which pandas removed in 2.0. On
+    pandas >= 2 that is an AttributeError inside `graph_connectivity` and inside kBET's component
+    sizing - so a batch metric disappears for a reason that has nothing to do with the data, and
+    the aggregate is quietly taken over one fewer metric.
+
+    Scoped rather than set at import: this package has no business changing pandas for the rest of
+    the caller's process, and a shim that outlives its need is a shim somebody else debugs. It is
+    also NOT a reimplementation - `pd.Series(x).value_counts()` is exactly what the removed
+    function did.
+    """
+
+    def __init__(self):
+        self._added = False
+
+    def __enter__(self):
+        import pandas as pd
+        if not hasattr(pd, "value_counts"):
+            pd.value_counts = lambda x, **kw: pd.Series(x).value_counts(**kw)
+            self._added = True
+        return self
+
+    def __exit__(self, *exc):
+        if self._added:
+            import pandas as pd
+            del pd.value_counts
+        return False
+
+
 def _guard(name, fn, out):
     """Run one metric. A failure is recorded with its reason and never becomes a number."""
     try:
@@ -96,6 +127,17 @@ def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsampl
     import scib.metrics as M
     type_ = "knn" if kind == "graph" else "embed"
     out = {}
+    _compat = scib_pandas_compat()
+    _compat.__enter__()
+    try:
+        return _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out,
+                      n_cores, lisi_subsample)
+    finally:
+        _compat.__exit__(None, None, None)
+
+
+def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores, lisi_subsample):
+    """The body of `score`, called inside the pandas shim."""
 
     # A `graph` method HAS NO CORRECTED COORDINATES, so every metric that reads one must be an
     # ABSENCE rather than a number. `prepare` puts the uncorrected PCA in X_emb for such a method,

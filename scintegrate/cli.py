@@ -544,6 +544,112 @@ def _draw_assessment(out, rows, fnames, a):
                 f"({a.indicates_below}).")]
 
 
+# ------------------------------------------------------------------------------------- score
+
+def _score(a):
+    """Re-run the benchmark against an object that ALREADY holds the embeddings.
+
+    WHY THIS EXISTS. `integrate` trains the models, and on a cohort that is hours of CPU. The
+    benchmark that runs afterwards depends on things that have nothing to do with the models - a
+    pandas version, a compiled LISI helper, whether rpy2 is installed - and any one of them can
+    make a metric disappear. Without this command, repairing such a metric means retraining scVI
+    and scANVI to compute a number that never depended on them.
+
+    So the embeddings are the expensive artefact and they are kept: this reads them back out of
+    `obsm`, re-scores, and rewrites the tables, the report and the object's own `uns`. Nothing is
+    retrained and no embedding changes.
+    """
+    from . import benchmark as BM, emit, inputs, methods as ME
+    import numpy as np
+    try:
+        D = _load(a)
+    except inputs.Refuse as e:
+        print(f"scintegrate: REFUSE - {e}", file=sys.stderr)
+        return REFUSE
+    A = D["adata"]
+    out = Path(a.out)
+
+    stored = {k[2:]: k for k in A.obsm if k.startswith("X_")
+              and not k.startswith("X_umap") and k != "X_pca"}
+    if "none" not in stored and "X_pca" in A.obsm:
+        stored = {"none": "X_pca", **stored}
+    if not stored:
+        print("scintegrate: REFUSE - this object holds no method embeddings. `score` re-scores "
+              "an object written by `integrate`; it does not create one. obsm has: "
+              + ", ".join(A.obsm), file=sys.stderr)
+        return REFUSE
+    order = (["none"] + [m for m in ME.METHODS if m in stored and m != "none"]
+             + [m for m in stored if m not in ME.METHODS])
+    order = [m for m in dict.fromkeys(order) if m in stored]
+    print(f"\nre-scoring {len(order)} stored embedding(s): {', '.join(order)}")
+    print("  nothing is retrained; these are the embeddings already in the object")
+
+    real = D["is_real"]
+    n_drop = int((~real).sum())
+    if n_drop:
+        print(f"  scIB on the {int(real.sum()):,} cells with a real label; {n_drop:,} sentinel "
+              f"cells excluded from the METRICS only")
+    obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
+
+    results, A_pre = [], None
+    for m in order:
+        print(f"  {m} ...", flush=True)
+        emb = np.asarray(A.obsm[stored[m]])[real]
+        r = {"method": m, "kind": ME.kind(m) if m in ME.METHODS else "embed",
+             "emb": np.asarray(A.obsm[stored[m]]),
+             "umap": (np.asarray(A.obsm[f"X_umap_{m}"]) if f"X_umap_{m}" in A.obsm else None),
+             "note": f"read from obsm[{stored[m]!r}] - not recomputed"}
+        Ai = BM.prepare(emb, None, obs_sub, a.batch_key, a.label_key, kind="embed", seed=a.seed)
+        if A_pre is None:
+            A_pre = Ai
+        r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind="embed",
+                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample)
+        r["aggregate"] = BM.aggregate(r["metrics"], w_bio=a.w_bio)
+        ag = r["aggregate"]
+        print("      bio {} · batch {} · total {}   ({}/{} bio, {}/{} batch)".format(
+            f"{ag['bio']:.4f}" if ag["bio"] is not None else "-",
+            f"{ag['batch']:.4f}" if ag["batch"] is not None else "-",
+            f"{ag['total']:.4f}" if ag["total"] is not None else "-",
+            ag["n_bio"], ag["of_bio"], ag["n_batch"], ag["of_batch"]))
+        for k, why in ag["absent"].items():
+            print(f"      absent: {k} - {why}")
+        from .metrics import assess as knn_assess
+        base = np.asarray(A.obsm[stored[order[0]]])
+        r["knn"] = knn_assess(base, r["emb"], D["batch"], D["label"], k=a.k)
+        results.append(r)
+
+    chosen = BM.choose_default(results)
+    print("")
+    if chosen["default"]:
+        print(f"  DEFAULT EMBEDDING: X_{chosen['default']}   (scIB total {chosen['total']:.4f})")
+        if not chosen["comparable"]:
+            print("  NOTE: the totals do not all rest on the same number of metrics")
+    else:
+        print(f"  NO DEFAULT CHOSEN - {chosen['reason']}")
+
+    _csv(out / "tables" / "scib_metrics.csv",
+         ["method", "kind"] + sorted({k for r in results for k in r["metrics"]}),
+         [[r["method"], r["kind"]] + [
+             ("" if r["metrics"].get(k, {}).get("value") is None
+              else f"{r['metrics'][k]['value']:.6f}")
+             for k in sorted({k for x in results for k in x["metrics"]})] for r in results])
+    _csv(out / "tables" / "scib_absent.csv", ["method", "metric", "why"],
+         [[r["method"], k, why] for r in results for k, why in r["aggregate"]["absent"].items()])
+    _csv(out / "tables" / "scib_aggregate.csv",
+         ["method", "kind", "bio", "batch", "total", "w_bio", "n_bio", "of_bio",
+          "n_batch", "of_batch", "is_default"],
+         [[r["method"], r["kind"],
+           "" if r["aggregate"]["bio"] is None else f"{r['aggregate']['bio']:.6f}",
+           "" if r["aggregate"]["batch"] is None else f"{r['aggregate']['batch']:.6f}",
+           "" if r["aggregate"]["total"] is None else f"{r['aggregate']['total']:.6f}",
+           r["aggregate"]["w_bio"], r["aggregate"]["n_bio"], r["aggregate"]["of_bio"],
+           r["aggregate"]["n_batch"], r["aggregate"]["of_batch"],
+           "YES" if r["method"] == chosen["default"] else ""] for r in results])
+    print(f"\nrewrote {out}/tables/scib_*.csv")
+    print("Re-run `scintegrate report --out` to rebuild the document from these.")
+    return 0
+
+
 # ------------------------------------------------------------------------------------ report
 
 def _report(a):
@@ -637,6 +743,14 @@ def main(argv=None):
                    help="subsample percentage for the LISI metrics; the default uses every cell")
     g.add_argument("--object-name", default="cohort_integrated.h5ad")
     g.set_defaults(fn=_integrate)
+
+    sc_ = sub.add_parser("score", help="re-run the benchmark on an object that already holds "
+                                      "the embeddings - nothing is retrained")
+    _common(sc_)
+    sc_.add_argument("--w-bio", type=float, default=0.6, metavar="W")
+    sc_.add_argument("--n-cores", type=int, default=1)
+    sc_.add_argument("--lisi-subsample", type=int, default=None, metavar="PCT")
+    sc_.set_defaults(fn=_score)
 
     r = sub.add_parser("report", help="rebuild the document from report.json")
     r.add_argument("--out", required=True, type=Path)

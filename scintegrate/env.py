@@ -133,6 +133,47 @@ def gpu():
         return f"torch present, CUDA probe failed: {type(e).__name__}"
 
 
+def lisi_binary():
+    """Can scIB's LISI helper actually RUN here? Returns (ok, detail).
+
+    scIB ships `knn_graph/knn_graph.o` PREBUILT, and a wheel built on a newer distribution than
+    the host links against a newer glibc/libstdc++. It then fails to start - and scIB invokes it
+    with `subprocess.run(...)` and does NOT check the return code, so the failure is silent and
+    surfaces much later as a missing output file:
+
+        FileNotFoundError: .../lisi_xxxx/graph_lisi_indices_3.txt
+
+    which names nothing about the cause. Both iLISI and cLISI vanish, one from each side of the
+    scIB ledger. Checked by EXECUTING it, because the file existing and the file running are
+    different claims and only the second one matters.
+    """
+    if importlib.util.find_spec("scib") is None:
+        return False, "scib not installed"
+    import pathlib
+    import subprocess
+    try:
+        import scib
+        exe = pathlib.Path(scib.__file__).parent / "knn_graph" / "knn_graph.o"
+        if not exe.exists():
+            return False, f"missing: {exe}"
+        r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+        err = (r.stderr or "") + (r.stdout or "")
+        for bad in ("GLIBC", "GLIBCXX", "cannot execute", "not found", "error while loading"):
+            if bad in err:
+                first = err.strip().splitlines()[0][:150]
+                return False, f"present but WILL NOT RUN: {first}"
+        return True, f"runs: {exe}"
+    except Exception as e:                                                 # noqa: BLE001
+        return False, f"{type(e).__name__}: {str(e)[:120]}"
+
+
+#: How to repair the LISI helper, printed by `doctor` when it cannot run. Compiling the shipped
+#: source against the local toolchain is the whole fix; scIB's own README gives this command.
+LISI_FIX = ("cd $(python -c 'import scib,pathlib;"
+            "print(pathlib.Path(scib.__file__).parent/\"knn_graph\")') && "
+            "g++ -std=c++11 -O3 knn_graph.cpp -o knn_graph.o")
+
+
 def doctor(argv_out=print):
     """Print the audit. Returns 0 if the tool can run at all, 2 if a fatal capability is absent."""
     p = probe()
@@ -152,6 +193,12 @@ def doctor(argv_out=print):
                 broken.append(name)
     argv_out("")
     argv_out(f"  gpu: {gpu()}")
+    ok_lisi, why_lisi = lisi_binary()
+    argv_out(f"  lisi helper: {'ok - ' if ok_lisi else 'BROKEN - '}{why_lisi}")
+    if not ok_lisi and importlib.util.find_spec("scib") is not None:
+        argv_out("     iLISI and cLISI will be ABSENT - one metric from each side of the scIB")
+        argv_out("     ledger. Rebuild the helper from the source scIB ships:")
+        argv_out(f"       {LISI_FIX}")
     argv_out("")
     argv_out("  scIB metrics that need more than python, and are reported as absent rather")
     argv_out("  than approximated:")

@@ -257,6 +257,34 @@ check("obs is narrowed, and a missing column refuses by name",
       "cannot keep obs column(s) that do not exist" in emitsrc)
 check("uns is reduced to plain types so other readers can hold it", "def _plain" in emitsrc)
 
+section("L2. uns must never carry a list of dicts, and score must exist")
+from scintegrate.emit import _plain                                                        # noqa
+import json as _json                                                                       # noqa
+_rows = [{"label": "A", "n": 1, "batch": {"ratio": 0.5}}, {"label": "B", "n": 2}]
+_got = _plain({"celltypes": _rows, "flat": [1, 2, 3], "s": "x"})
+check("a list of DICTS becomes a string, because HDF5 cannot hold one",
+      isinstance(_got["celltypes"], str), type(_got["celltypes"]).__name__)
+check("and it is valid JSON, so nothing is lost", len(_json.loads(_got["celltypes"])) == 2)
+check("a list of scalars is left alone", _got["flat"] == [1, 2, 3])
+check("this is what killed a 12-hour run at its final write",
+      "LIST OF DICTS" in emitsrc)
+check("`score` re-scores stored embeddings without retraining",
+      'sub.add_parser("score"' in cli and "nothing is retrained" in cli)
+check("and REFUSES an object holding no embeddings rather than inventing them",
+      "does not create one" in cli)
+
+section("N2. the scIB compatibility shims are scoped, not global")
+bsrc = (ROOT / "scintegrate/benchmark.py").read_text()
+check("pd.value_counts is restored for scib, which calls a pandas-1 API",
+      "class scib_pandas_compat" in bsrc)
+check("and REMOVED again afterwards, not left on the module", "del pd.value_counts" in bsrc)
+esrc = (ROOT / "scintegrate/env.py").read_text()
+check("doctor EXECUTES the LISI helper rather than checking it exists",
+      "def lisi_binary" in esrc and "subprocess.run" in esrc)
+check("it names what a broken helper costs: one metric from each side",
+      "each side of the scIB" in esrc)
+check("and prints the command that repairs it", "LISI_FIX" in esrc and "g++" in esrc)
+
 section("M. no gene class may leave the study by way of HVG selection")
 msrc = (ROOT / "scintegrate/methods.py").read_text()
 check("the mask is reused verbatim when present", "reused verbatim" in msrc)

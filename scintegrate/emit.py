@@ -28,6 +28,9 @@ counts from upstream is how a cell filtered in one place and not the other becom
 mismatch.
 """
 from __future__ import annotations
+
+import json
+
 import numpy as np
 
 
@@ -149,10 +152,23 @@ def _uns(results, chosen, benchmark, assessment, constraint, provenance):
 
 
 def _plain(x):
-    """Recursively convert to types HDF5 and every other reader can hold."""
+    """Recursively convert to types HDF5 and every other reader can hold.
+
+    A LIST OF DICTS IS THE ONE SHAPE THAT LOOKS FINE AND IS NOT. Every element converts cleanly,
+    so a recursive walk returns a list of dicts unchanged - and anndata then tries to write it as
+    a ragged string array and raises `Can't implicitly convert non-string objects to strings`,
+    naming a uns key and nothing about the cause. It happens at the very END of a run, after every
+    expensive step has completed, and takes the whole object with it.
+
+    Such a list becomes a JSON string: always writable, readable by anything, and losslessly
+    recoverable with `json.loads`. The canonical form of that data is the CSV in `tables/`
+    anyway - uns carries it so the object is self-describing, not so it can be computed from.
+    """
     if isinstance(x, dict):
         return {str(k): _plain(v) for k, v in x.items()}
     if isinstance(x, (list, tuple)):
+        if any(isinstance(v, dict) for v in x):
+            return json.dumps([_plain(v) for v in x], default=str)
         return [_plain(v) for v in x]
     if isinstance(x, (bool, str)) or x is None:
         return x
