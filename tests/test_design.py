@@ -273,11 +273,27 @@ check("`score` re-scores stored embeddings without retraining",
 check("and REFUSES an object holding no embeddings rather than inventing them",
       "does not create one" in cli)
 
+section("L3. the expensive half is written before the fragile half")
+check("the object is written BEFORE scoring",
+      "BEFORE SCORING" in cli and "writing the embeddings BEFORE scoring" in cli)
+check("and rewritten in place once the benchmark exists",
+      "rewritten in place, now WITH the benchmark" in cli)
+check("the scIB clustering grid is tunable, and says what that costs",
+      '"--scib-resolutions"' in cli and "COARSER SEARCH" in cli)
+check("the leiden flavour can be restored to scIB's literal behaviour",
+      '"--no-fast-leiden"' in cli)
+
 section("N2. the scIB compatibility shims are scoped, not global")
 bsrc = (ROOT / "scintegrate/benchmark.py").read_text()
 check("pd.value_counts is restored for scib, which calls a pandas-1 API",
       "class scib_pandas_compat" in bsrc)
 check("and REMOVED again afterwards, not left on the module", "del pd.value_counts" in bsrc)
+check("the leiden shim is scoped and restored too",
+      "class scanpy_fast_leiden" in bsrc and "sc.tl.leiden = self._orig" in bsrc)
+check("it explains that the flavour changes the implementation, not the question",
+      "IMPLEMENTATION rather than the" in bsrc)
+check("and falls back rather than failing on an older scanpy",
+      "Being slow is a cost" in bsrc)
 esrc = (ROOT / "scintegrate/env.py").read_text()
 check("doctor EXECUTES the LISI helper rather than checking it exists",
       "def lisi_binary" in esrc and "subprocess.run" in esrc)

@@ -270,6 +270,14 @@ def _integrate(a):
         import scanpy as sc
         sc.pp.pca(A, n_comps=a.n_pcs, svd_solver="arpack", random_state=a.seed)
 
+    # The scIB clustering grid, used by BOTH sweeps. Fewer points is a coarser
+    # search for the best-agreeing resolution, not a different metric - and it is
+    # the dominant cost, run twice per method.
+    _res = None
+    if a.scib_resolutions:
+        _res = [round(x, 3) for x in
+                __import__("numpy").linspace(0.1, 2.0, int(a.scib_resolutions))]
+        print(f"  scIB clustering grid: {len(_res)} resolutions {_res}")
     sent = tuple(D["sentinels"])
     results = []
     for m in ok:
@@ -289,6 +297,30 @@ def _integrate(a):
             r["umap"] = np.asarray(r["adata"].obsm["X_umap"])
         else:
             r["umap"] = _umap(r["emb"], seed=a.seed)
+
+    # ---- THE OBJECT IS WRITTEN NOW, BEFORE SCORING ---------------------------------------
+    #
+    # Training is the expensive half and scoring is the fragile one: it depends on a pandas
+    # version, a compiled LISI helper, a walltime. Writing the embeddings only at the END
+    # means any of those takes the models with it - which is exactly how a 12-hour run came
+    # back as 10 MB of obs and var. So the deliverable is written here, complete but for the
+    # benchmark, and rewritten once the scores exist. A scoring failure now costs the
+    # metrics, and `scintegrate score` recomputes those in minutes from this file.
+    obs_keep_early = [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
+    for _f, _v in D["covariates"].items():
+        if _f not in A.obs:
+            A.obs[_f] = _v
+        obs_keep_early.append(_f)
+    (out / "objects").mkdir(parents=True, exist_ok=True)
+    op = out / "objects" / a.object_name
+    print(f"\nwriting the embeddings BEFORE scoring, so scoring cannot lose them", flush=True)
+    emit.write_h5ad(
+        emit.build(A, results, obs_keep_early, chosen=None,
+                   benchmark={"status": "not scored yet"},
+                   constraint="written before scoring; re-read after the run completes",
+                   provenance={"stage": "embeddings only"}),
+        op)
+    print(f"  {op}  ({op.stat().st_size / 1e9:.2f} GB)", flush=True)
 
     # ---- the tool's own kNN metrics, which do not need scIB and are never absent
     from .metrics import assess as knn_assess
@@ -315,7 +347,8 @@ def _integrate(a):
         if A_pre is None:
             A_pre = Ai                       # `none` is first, and is the pre object for PCR
         r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind=r["kind"],
-                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample)
+                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample,
+                                resolutions=_res, fast_leiden=not a.no_fast_leiden)
         r["aggregate"] = BM.aggregate(r["metrics"], w_bio=a.w_bio)
         ag = r["aggregate"]
         print("      bio {} · batch {} · total {}".format(
@@ -383,11 +416,7 @@ def _integrate(a):
 
     # ---- the object
     print("\nwriting the deliverable", flush=True)
-    obs_keep = [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
-    for f, v in D["covariates"].items():
-        if f not in A.obs:
-            A.obs[f] = v
-        obs_keep.append(f)
+    obs_keep = obs_keep_early
     prov = {"tool": "scintegrate", "input": str(a.h5ad), "batch_key": a.batch_key,
             "label_key": a.label_key, "l1_key": a.l1_key or "", "seed": a.seed,
             "k": a.k, "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
@@ -402,9 +431,7 @@ def _integrate(a):
     obj = emit.build(A, results, obs_keep, chosen=chosen["default"], benchmark=bench,
                      assessment={"summary": summ, "celltypes": _plainrows(arows)},
                      constraint=constraint, provenance=prov)
-    (out / "objects").mkdir(parents=True, exist_ok=True)
-    op = out / "objects" / a.object_name
-    emit.write_h5ad(obj, op)
+    emit.write_h5ad(obj, op)          # rewritten in place, now WITH the benchmark
     print(f"  {op}  ({op.stat().st_size / 1e9:.2f} GB)")
     print(f"  obs: {', '.join(obj.obs.columns)}")
     print(f"  layers: {', '.join(obj.layers)}")
@@ -602,8 +629,13 @@ def _score(a):
         Ai = BM.prepare(emb, None, obs_sub, a.batch_key, a.label_key, kind="embed", seed=a.seed)
         if A_pre is None:
             A_pre = Ai
+        _res = ([round(x, 3) for x in __import__("numpy").linspace(
+                    0.1, 2.0, int(a.scib_resolutions))]
+                if a.scib_resolutions else None)
         r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind="embed",
-                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample)
+                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample,
+                                resolutions=_res,
+                                fast_leiden=not a.no_fast_leiden)
         r["aggregate"] = BM.aggregate(r["metrics"], w_bio=a.w_bio)
         ag = r["aggregate"]
         print("      bio {} · batch {} · total {}   ({}/{} bio, {}/{} batch)".format(
@@ -741,6 +773,17 @@ def main(argv=None):
     g.add_argument("--n-cores", type=int, default=1)
     g.add_argument("--lisi-subsample", type=int, default=None, metavar="PCT",
                    help="subsample percentage for the LISI metrics; the default uses every cell")
+    g.add_argument("--scib-resolutions", type=int, default=None, metavar="N",
+                   help="use N evenly spaced clustering resolutions for the scIB sweeps "
+                        "instead of scIB's own grid. scIB clusters TWICE per method - for "
+                        "NMI/ARI and again inside isolated_labels - and that is the dominant "
+                        "cost on a large cohort. Fewer points is a COARSER SEARCH for the "
+                        "best-agreeing resolution, not a different metric; leave it unset to "
+                        "match a published scIB benchmark exactly")
+    g.add_argument("--no-fast-leiden", action="store_true",
+                   help="do not force the igraph Leiden flavour on scIB's clustering. The "
+                        "flavour changes the implementation, not the question, and scanpy "
+                        "recommends igraph - but this restores scIB's literal behaviour")
     g.add_argument("--object-name", default="cohort_integrated.h5ad")
     g.set_defaults(fn=_integrate)
 
@@ -750,6 +793,8 @@ def main(argv=None):
     sc_.add_argument("--w-bio", type=float, default=0.6, metavar="W")
     sc_.add_argument("--n-cores", type=int, default=1)
     sc_.add_argument("--lisi-subsample", type=int, default=None, metavar="PCT")
+    sc_.add_argument("--scib-resolutions", type=int, default=None, metavar="N")
+    sc_.add_argument("--no-fast-leiden", action="store_true")
     sc_.set_defaults(fn=_score)
 
     r = sub.add_parser("report", help="rebuild the document from report.json")

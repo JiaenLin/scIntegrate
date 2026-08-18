@@ -74,6 +74,54 @@ class scib_pandas_compat:
         return False
 
 
+class scanpy_fast_leiden:
+    """Make scIB's Leiden calls use the `igraph` flavour for the duration of a scoring run.
+
+    scIB clusters TWICE per method - once in `cluster_optimal_resolution` for NMI/ARI, once
+    inside `isolated_labels_f1` - and each sweep runs one Leiden per resolution. It calls
+    `sc.tl.leiden` with no `flavor`, which on scanpy >= 1.10 means the legacy `leidenalg`
+    path; scanpy's own FutureWarning says to prefer `igraph`. On a 10^5-cell cohort that
+    difference is hours, not seconds, and it changes the IMPLEMENTATION rather than the
+    question - both are Leiden on the same graph at the same resolution.
+
+    Scoped and restored, like the pandas shim: a global left switched on is a global
+    somebody else debugs. `directed=False` travels with it because scanpy REFUSES the igraph
+    flavour on a directed graph, and refusing here would be worse than being slow.
+    """
+
+    def __init__(self, enabled=True):
+        self.enabled = enabled
+        self._orig = None
+
+    def __enter__(self):
+        if not self.enabled:
+            return self
+        import scanpy as sc
+        self._orig = sc.tl.leiden
+
+        def _fast(adata, *a, **kw):
+            kw.setdefault("flavor", "igraph")
+            kw.setdefault("n_iterations", 2)
+            kw.setdefault("directed", False)
+            try:
+                return self._orig(adata, *a, **kw)
+            except TypeError:
+                # An older scanpy without these parameters: fall back rather than fail.
+                # Being slow is a cost; not running is a result nobody gets.
+                for k in ("flavor", "n_iterations", "directed"):
+                    kw.pop(k, None)
+                return self._orig(adata, *a, **kw)
+
+        sc.tl.leiden = _fast
+        return self
+
+    def __exit__(self, *exc):
+        if self._orig is not None:
+            import scanpy as sc
+            sc.tl.leiden = self._orig
+        return False
+
+
 def _guard(name, fn, out):
     """Run one metric. A failure is recorded with its reason and never becomes a number."""
     try:
@@ -118,7 +166,7 @@ def prepare(emb, adata_graph, obs, batch_key, label_key, *, kind, seed=0, n_neig
 
 
 def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsample=None,
-          cluster_seed=0):
+          cluster_seed=0, resolutions=None, fast_leiden=True):
     """Every scIB metric, each either a float or a stated absence.
 
     `A_pre` is the uncorrected object, needed only by PCR, which asks how much batch-explained
@@ -127,17 +175,14 @@ def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsampl
     import scib.metrics as M
     type_ = "knn" if kind == "graph" else "embed"
     out = {}
-    _compat = scib_pandas_compat()
-    _compat.__enter__()
-    try:
+    with scib_pandas_compat(), scanpy_fast_leiden(fast_leiden):
         return _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out,
-                      n_cores, lisi_subsample)
-    finally:
-        _compat.__exit__(None, None, None)
+                      n_cores, lisi_subsample, resolutions)
 
 
-def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores, lisi_subsample):
-    """The body of `score`, called inside the pandas shim."""
+def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores,
+           lisi_subsample, resolutions=None):
+    """The body of `score`, called inside the shims."""
 
     # A `graph` method HAS NO CORRECTED COORDINATES, so every metric that reads one must be an
     # ABSENCE rather than a number. `prepare` puts the uncorrected PCA in X_emb for such a method,
@@ -167,7 +212,8 @@ def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores, li
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            M.cluster_optimal_resolution(A_post, cluster_key=cl, label_key=label_key)
+            M.cluster_optimal_resolution(A_post, cluster_key=cl, label_key=label_key,
+                                         resolutions=resolutions)
         have_cluster = cl in A_post.obs
     except Exception as e:
         have_cluster = False
@@ -183,7 +229,9 @@ def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores, li
     # isolated_labels_f1 CLUSTERS rather than measuring a distance, so it is defined for a graph
     # method too - it is not in the absent-by-kind list above.
     _guard("isolated_labels_f1",
-           lambda: M.isolated_labels_f1(A_post, label_key, batch_key, "X_emb", verbose=False), out)
+           lambda: M.isolated_labels_f1(A_post, label_key, batch_key, "X_emb",
+                                        resolutions=resolutions, verbose=False),
+           out)
     _guard("clisi", lambda: M.clisi_graph(A_post, label_key, type_, use_rep="X_emb",
                                          subsample=lisi_subsample, n_cores=n_cores), out)
     _guard("graph_connectivity", lambda: M.graph_connectivity(A_post, label_key), out)
