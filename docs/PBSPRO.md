@@ -76,10 +76,27 @@ whole run and you find out at the end.
 A cohort of ~10⁵ cells × ~3·10⁴ genes with two count layers sits in the low tens of GB. Read your
 input's size off disk and start from three times it.
 
-**Walltime** is set by the models. `none` and `harmony` are minutes. BBKNN is minutes plus a UMAP.
-scVI and scANVI dominate: on a GPU, tens of minutes for ~10⁵ cells; on CPU, several hours. scANVI
-trains *after* scVI and adds to it. The scIB benchmark is not free either — `cluster_optimal_resolution`
-clusters the corrected space once per method.
+**Walltime is set by the METRICS, not the models** — which is the opposite of what you would guess,
+and was measured rather than estimated.
+
+On a ~10⁵-cell cohort: training all five methods took **~50 minutes**; scoring took **~3 hours per
+method**. scIB clusters *twice* per method — once in `cluster_optimal_resolution` for NMI/ARI, once
+inside `isolated_labels_f1` — and each sweep runs one Leiden per resolution.
+
+Three levers, each a stated trade rather than a free lunch:
+
+```bash
+--scib-resolutions 7      # a coarser SEARCH for the best-agreeing resolution, not a new metric
+--lisi-subsample 50       # a noisier LISI estimate, not a biased one
+                          # (the igraph Leiden flavour is forced by default: same algorithm,
+                          #  same graph, same resolution, faster implementation)
+```
+
+Omit all three to reproduce a published scIB benchmark exactly.
+
+**A walltime kill no longer costs you the models.** The object is written as soon as the embeddings
+exist, before scoring starts, and rewritten once the scores are there. If the job dies during
+scoring, run `scintegrate score --h5ad <that object>` and finish the benchmark in minutes.
 
 Find your queue's ceilings rather than guessing:
 

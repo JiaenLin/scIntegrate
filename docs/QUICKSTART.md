@@ -1,6 +1,6 @@
 # Quickstart
 
-Three commands, in the order the questions arrive.
+Five commands, in the order the questions arrive.
 
 ## 0. Check the environment before trusting it
 
@@ -131,6 +131,22 @@ A.obsm["X_pca"]                                # the uncorrected baseline, kept 
 
 Every method's embedding is in the same object under `X_<method>`, so a comparison never means
 re-running anything.
+
+## Re-scoring without retraining
+
+The metrics depend on things the models do not: a pandas version, a compiled LISI helper, whether
+`rpy2` is installed. When one of those is fixed, you should not have to retrain scVI.
+
+```bash
+scintegrate score --h5ad results/03_integrate/objects/cohort_integrated.h5ad \
+    --out results/03_integrate --batch-key sample --label-key cell_type
+```
+
+It reads the embeddings out of `obsm`, re-scores, and rewrites `tables/scib_*.csv`. Then rebuild
+the document with `scintegrate report --out`.
+
+This works because **the object is written before scoring starts**, so even a run killed at the
+walltime leaves its embeddings on disk.
 
 ## Rebuilding the document without recomputing
 

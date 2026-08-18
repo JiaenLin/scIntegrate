@@ -20,6 +20,27 @@ settled before a GPU is spent on methods you may not want. `integrate` runs the 
 them with **scIB**, names a default embedding, and writes **one** object holding every embedding
 next to the counts they came from.
 
+```bash
+scintegrate score  --h5ad results/objects/cohort_integrated.h5ad --out results/ \
+    --batch-key sample --label-key cell_type
+```
+
+`score` re-runs the benchmark against an object that **already holds the embeddings**. Nothing is
+retrained.
+
+## The expensive half is written before the fragile half
+
+Training is what costs hours. Scoring is what breaks: it depends on a pandas version, a compiled
+LISI helper, whether `rpy2` is installed, a walltime.
+
+So **the object is written as soon as the embeddings exist**, complete but for the benchmark, and
+rewritten in place once the scores are there. A scoring failure now costs the metrics, not the
+models — and `score` recomputes those in minutes from the file that survived.
+
+This is not hypothetical. A twelve-hour run once completed every method, produced a default
+embedding, and then died serialising a list of dicts into `uns`; what landed was 10 MB of `obs`
+and `var` with no `X`, no layers and no embeddings.
+
 ## The unit of measurement is the cell type
 
 A global mixing number cannot answer the question. A cohort looks badly mixed when one abundant

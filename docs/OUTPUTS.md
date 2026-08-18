@@ -59,6 +59,13 @@ open. The failure that guards against is invisible in Python — anndata reads b
 same pandas object — and surfaces in a viewer as a property access on `undefined`, which points
 nowhere near the cause.
 
+### It is written twice, on purpose
+
+The object appears **before** the benchmark runs, carrying every embedding and a `uns` that says
+`"not scored yet"`. It is rewritten in place once the scores exist. If you find an object whose
+`uns['scintegrate']['benchmark']` says it was not scored, the run did not finish its metrics —
+`scintegrate score` will complete it without retraining anything.
+
 ## The tables
 
 | file | what |
