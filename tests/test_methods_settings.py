@@ -38,6 +38,26 @@ def _code(path):
     return "\n".join(out)
 
 
+def test_no_project_data():
+    """The repo is public. Nothing from any particular dataset belongs in it.
+
+    Checked because it happened: a worked example in QUICKSTART.md carried a real cell type and
+    a real cell count from the study the tool was being built against. Example output has to be
+    the SHAPE of a table, never a result.
+    """
+    import re
+    print("\nno dataset-specific content")
+    bad = []
+    pat = re.compile(r"cardiomyo|matrifibro|endocardial|pericyte|celescope|cellbender"
+                     r"|\bsambo\b|wangyb|duke-nus", re.I)
+    for f in list(ROOT.glob("docs/*.md")) + list(ROOT.glob("*.md")) \
+            + list(ROOT.glob("scintegrate/*.py")):
+        for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if pat.search(ln):
+                bad.append(f"{f.name}:{i}")
+    check("no cell types or tools from a particular dataset", not bad, ", ".join(bad[:5]))
+
+
 def main():
     m = _code(ROOT / "scintegrate" / "methods.py")
     f = _code(ROOT / "scintegrate" / "figures.py")
@@ -90,6 +110,8 @@ def main():
     check("every sc.tl.umap call sets min_dist",
           f.count("sc.tl.umap(") == f.count("min_dist=min_dist"),
           f"{f.count('sc.tl.umap(')} calls, {f.count('min_dist=min_dist')} set it")
+
+    test_no_project_data()
 
     print()
     if FAILED:

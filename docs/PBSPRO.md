@@ -42,7 +42,7 @@ PYTHONPATH="$TOOL" "$PY" -m scintegrate.cli integrate \
     --h5ad  "$IN" \
     --out   "$RUNDIR" \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
-    --design "$DESIGN" --bio-factor age --bio-factor diet \
+    --design "$DESIGN" --bio-factor condition --bio-factor timepoint \
     --methods none,harmony,bbknn,scvi,scanvi \
     --n-cores "${NCPUS:-1}" --seed 0 \
   2>&1 | tee "$RUNDIR/logs/run.log"

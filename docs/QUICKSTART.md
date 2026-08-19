@@ -64,21 +64,23 @@ the cells it omits.
 ```bash
 scintegrate assess --h5ad joint.h5ad --out results/03_integrate \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
-    --design design.csv --bio-factor age --bio-factor diet
+    --design design.csv --bio-factor condition --bio-factor timepoint
 ```
 
 Nothing is trained and nothing is corrected. It measures mixing **inside each cell type** on the
 uncorrected embedding, and again for each declared factor:
 
 ```
-  cell type                       n    batch      age     diet
-  Working cardiomyocyte      37,608    0.680    0.576    0.620
-  Vascular endothelial       16,301    0.734    0.654    0.728
-  Dendritic cell                 47       --   (below 3x k)
+  cell type                       n    batch  factor_a  factor_b
+  Cell type A                40,000    0.680     0.576     0.620
+  Cell type B                16,000    0.734     0.654     0.728
+  Cell type C                    47       --   (below 3x k)
 
   threshold: a ratio below 0.8 is called batch structure
-  11 of 12 measured cell types fall below the threshold ...
+  N of M measured cell types fall below the threshold ...
 ```
+
+*Illustrative output with placeholder names and counts — the shape of the table, not a result.*
 
 **1.00 is fully mixed** against chance for that population's own batch composition, so every row has
 its own denominator. Read the two columns together — where **both** are low, the library structure
@@ -92,7 +94,7 @@ next one is a decision rather than a default.
 ```bash
 scintegrate integrate --h5ad joint.h5ad --out results/03_integrate \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
-    --design design.csv --bio-factor age --bio-factor diet \
+    --design design.csv --bio-factor condition --bio-factor timepoint \
     --methods none,harmony,bbknn,scvi,scanvi
 ```
 
