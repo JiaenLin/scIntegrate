@@ -39,7 +39,8 @@ def _load(a):
     D = inputs.read(a.h5ad, a.batch_key, a.label_key, l1_key=a.l1_key,
                     sentinels=sent, coarse_from_path=a.coarse_from_path)
     D["colour_cols"], D["colour_why"] = inputs.colour_columns(
-        D["adata"].obs, _split(getattr(a, "colour_by", None) or ""),
+        D["adata"].obs,
+        [c.strip() for c in (getattr(a, "colour_by", None) or "").split(",") if c.strip()],
         a.batch_key, a.label_key, a.l1_key)
     print("  colour : " + ", ".join(f"{c} ({D['colour_why'][c]})" for c in D["colour_cols"]))
     A = D["adata"]
