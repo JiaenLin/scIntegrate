@@ -245,6 +245,33 @@ def _write_json(out, payload):
     return payload
 
 
+def _restore_withheld(D, results):
+    """Put the withheld cells back into the deliverable, with NaN in every embedding.
+
+    They were withheld from the FIT, not from the dataset. Writing an object that simply lacks
+    them would make an approved upstream removal look like something this stage did, and would
+    leave a reader unable to tell a cell that failed QC from one that was never delivered. NaN is
+    the honest value: it plots as absent, sorts as absent, and cannot be averaged into anything -
+    which a zero would.
+    """
+    import numpy as np
+    drop = D.get("drop_mask")
+    if drop is None:
+        return D["adata"], results
+    full = D["full_adata"]
+    keep = ~drop
+    n = full.n_obs
+    for r in results:
+        for k in ("emb", "umap"):
+            v = r.get(k)
+            if v is None:
+                continue
+            wide = np.full((n, np.asarray(v).shape[1]), np.nan, dtype="float32")
+            wide[keep] = np.asarray(v, dtype="float32")
+            r[k] = wide
+    return full, results
+
+
 # ---------------------------------------------------------------------------------- integrate
 
 def _integrate(a):
@@ -257,6 +284,55 @@ def _integrate(a):
         return REFUSE
     A = D["adata"]
     out = Path(a.out)
+    (out / "tables").mkdir(parents=True, exist_ok=True)
+
+    # ---- cells withheld from the INTEGRATION, but not from the object ------------------------
+    D["full_adata"], D["drop_mask"], D["drop_note"] = A, None, ""
+    _dv = [v.strip() for v in (getattr(a, "drop_labels", None) or "").split(",") if v.strip()]
+    if _dv:
+        _lab = np.asarray(A.obs[a.label_key].astype(str))
+        drop = np.isin(_lab, _dv)
+        if not drop.any():
+            print(f"  --drop-labels {_dv}: no cell carries any of these; nothing withheld")
+        else:
+            # Measured per arm BEFORE anything is withheld, and printed whether or not it is
+            # alarming. A removal falling harder on one arm converts a technical property into an
+            # apparent biological difference, and nothing downstream can undo it.
+            print(f"\n  --drop-labels {', '.join(_dv)}: {int(drop.sum()):,} of {A.n_obs:,} cells "
+                  f"({100 * drop.mean():.2f}%) withheld from the integration")
+            print("  they stay in the delivered object, with NaN in every embedding")
+            _rows = [["ALL", int(drop.sum()), int(A.n_obs), round(100 * float(drop.mean()), 3)]]
+            for _f, _v in (D.get("covariates") or {}).items():
+                _vs = np.asarray(list(map(str, _v)))
+                for _lvl in sorted(set(_vs)):
+                    m = _vs == _lvl
+                    if m.any():
+                        r = float(drop[m].mean())
+                        _rows.append([f"{_f}={_lvl}", int(drop[m].sum()), int(m.sum()),
+                                      round(100 * r, 3)])
+                        print(f"      {_f}={_lvl:<14} {int(drop[m].sum()):>6,} /"
+                              f" {int(m.sum()):>7,}   {100 * r:>6.2f}%")
+            _csv(out / "tables" / "integration_withheld_by_arm.csv",
+                 ["arm", "n_withheld", "n_in_arm", "pct_of_arm"], _rows)
+            _rt = [r[3] for r in _rows[1:] if r[2] > 0]
+            if _rt and min(_rt) > 0 and max(_rt) / min(_rt) >= 3.0:
+                print(f"      NOTE: the rate differs {max(_rt) / min(_rt):.1f}x across arms. The "
+                      f"manifold is built from a different fraction of each, and that is recorded "
+                      f"rather than corrected.")
+            _keep = ~drop
+            D["drop_mask"] = drop
+            D["drop_note"] = (f"{int(drop.sum()):,} cells carrying {', '.join(_dv)} were withheld "
+                              f"from the integration and carry NaN in every embedding")
+            A = A[_keep].copy()
+            D["adata"] = A
+            for _k in ("batch", "label", "coarse", "is_real"):
+                if _k in D and hasattr(D[_k], "__len__") and len(D[_k]) == len(drop):
+                    D[_k] = np.asarray(D[_k])[_keep]
+            for _f in list(D.get("covariates") or {}):
+                D["covariates"][_f] = np.asarray(D["covariates"][_f])[_keep]
+            for _f in list(D.get("factors") or {}):
+                D["factors"][_f] = np.asarray(D["factors"][_f])[_keep]
+            print(f"  integrating {A.n_obs:,} cells\n")
 
     want = [m.strip() for m in a.methods.split(",") if m.strip()]
     ok, missing = ME.available(want)
@@ -325,15 +401,26 @@ def _integrate(a):
     obs_keep_early = list(dict.fromkeys(
         [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
         + list(D.get("colour_cols") or [])))
+    _full = D.get("full_adata") if D.get("drop_mask") is not None else A
     for _f, _v in D["covariates"].items():
-        if _f not in A.obs:
-            A.obs[_f] = _v
+        if _f not in _full.obs:
+            import numpy as _np
+            if D.get("drop_mask") is not None:
+                _wide = _np.empty(_full.n_obs, dtype=object)
+                _wide[~D["drop_mask"]] = _np.asarray(_v, dtype=object)
+                _wide[D["drop_mask"]] = "withheld_from_integration"
+                _full.obs[_f] = _wide
+            else:
+                _full.obs[_f] = _v
         obs_keep_early.append(_f)
     (out / "objects").mkdir(parents=True, exist_ok=True)
     op = out / "objects" / a.object_name
     print(f"\nwriting the embeddings BEFORE scoring, so scoring cannot lose them", flush=True)
+    A_out, results = _restore_withheld(D, results)
+    if D.get("drop_mask") is not None:
+        print(f"  {D['drop_note']}")
     emit.write_h5ad(
-        emit.build(A, results, obs_keep_early, chosen=None,
+        emit.build(A_out, results, obs_keep_early, chosen=None,
                    benchmark={"status": "not scored yet"},
                    constraint="written before scoring; re-read after the run completes",
                    provenance={"stage": "embeddings only"}),
@@ -376,7 +463,62 @@ def _integrate(a):
         for k, why in ag["absent"].items():
             print(f"      absent: {k} - {why}")
 
+    # ---- the same benchmark against additional label columns ---------------------------------
+    #
+    # One ranking is a ranking under ONE label set. Where an annotation ships several - a fine
+    # level, a coarse one, a forced variant - they disagree exactly where the annotation was least
+    # certain, and a supervised method is scored against whichever one it was trained on. Running
+    # the benchmark against each and printing them side by side turns an argument about the metric
+    # into evidence: if a method's advantage moves between label sets, the advantage was partly
+    # about the labels.
+    alt = [c.strip() for c in (getattr(a, "score_against", None) or "").split(",")
+           if c.strip() and c.strip() != a.label_key]
+    alt_rankings = {}
+    for col in alt:
+        if col not in A.obs:
+            print(f"\n  --score-against {col!r}: not an obs column, skipped")
+            continue
+        print(f"\nsecond scoring pass, against {col!r}", flush=True)
+        lab2 = np.asarray(A.obs[col].astype(str))
+        real2 = (~np.isin(lab2, list(D["sentinels"])) if D["sentinels"]
+                 else np.ones(len(lab2), dtype=bool))
+        obs2 = A.obs.loc[real2, [a.batch_key, col]]
+        pre2, rows2 = None, []
+        for r in results:
+            e = r["emb"][real2] if r["emb"] is not None else None
+            g = r["adata"][real2].copy() if r["adata"] is not None else None
+            Ai = BM.prepare(e, g, obs2, a.batch_key, col, kind=r["kind"], seed=a.seed)
+            if pre2 is None:
+                pre2 = Ai
+            m = BM.score(Ai, pre2, a.batch_key, col, kind=r["kind"], n_cores=a.n_cores,
+                         lisi_subsample=a.lisi_subsample, resolutions=_res,
+                         fast_leiden=not a.no_fast_leiden)
+            ag = BM.aggregate(m, w_bio=a.w_bio)
+            rows2.append({"method": r["method"], "aggregate": ag})
+            def _f(x):
+                return "-" if x is None else f"{x:.4f}"
+            print(f"  {r['method']:<9} bio {_f(ag['bio'])} · batch {_f(ag['batch'])}"
+                  f" · total {_f(ag['total'])}")
+        ch2 = BM.choose_default(rows2)
+        alt_rankings[col] = {"chosen": ch2,
+                             "aggregate": {r["method"]: r["aggregate"] for r in rows2}}
+        print(f"  ranking against {col}: {' > '.join(ch2.get('ranked') or [])}")
+
     chosen = BM.choose_default(results)
+    if alt_rankings:
+        _csv(out / "tables" / "scib_by_label_column.csv",
+             ["label_column", "method", "bio", "batch", "total"],
+             [[a.label_key, r["method"], r["aggregate"]["bio"], r["aggregate"]["batch"],
+               r["aggregate"]["total"]] for r in results]
+             + [[col, m, g["bio"], g["batch"], g["total"]]
+                for col, v in alt_rankings.items() for m, g in v["aggregate"].items()])
+        _base = chosen.get("ranked") or []
+        for col, v in alt_rankings.items():
+            _r2 = v["chosen"].get("ranked") or []
+            if _r2 and _base and _r2[0] != _base[0]:
+                print(f"\n  ! the winner CHANGES with the label column: {_base[0]} against "
+                      f"{a.label_key}, {_r2[0]} against {col}. The ranking is a property of the "
+                      f"label set as much as of the methods.")
     print("")
     if chosen["default"]:
         print(f"  DEFAULT EMBEDDING: X_{chosen['default']}   (scIB total "
@@ -449,11 +591,16 @@ def _integrate(a):
     chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
     if chosen["supervision_caveat"]:
         print("\n  ! " + chosen["supervision_caveat"])
+    if D.get("drop_note"):
+        constraint = (constraint or "") + "\n\nWITHHELD FROM THE INTEGRATION: " + D["drop_note"] \
+            + " Their per-arm rate is tables/integration_withheld_by_arm.csv. No embedding here " \
+              "describes them, and any count taken over an embedding excludes them by " \
+              "construction."
     bench = {"aggregate": {r["method"]: r["aggregate"] for r in results},
              "metrics": {r["method"]: {k: v["value"] for k, v in r["metrics"].items()}
                          for r in results},
              "chosen": chosen}
-    obj = emit.build(A, results, obs_keep, chosen=chosen["default"], benchmark=bench,
+    obj = emit.build(A_out, results, obs_keep, chosen=chosen["default"], benchmark=bench,
                      assessment={"summary": summ, "celltypes": _plainrows(arows)},
                      constraint=constraint, provenance=prov)
     emit.write_h5ad(obj, op)          # rewritten in place, now WITH the benchmark
@@ -486,6 +633,8 @@ def _integrate(a):
                             "knn": {k: v for k, v in r["knn"].items() if k != "_per_cell"}}
                            for r in results],
                "not_compared": missing, "chosen": chosen, "constraint_on_use": constraint,
+               "alt_rankings": alt_rankings,
+               "withheld_from_integration": D.get("drop_note") or "",
                "celltypes": _plainrows(arows), "dominance": dom, "summary": summ,
                "object": str(op), "metric_meaning": BM.MEANING,
                "figures": [{"name": n, "path": str(Path(p).name), "caption": c}
@@ -772,6 +921,19 @@ def _common(s):
                    help="a MEASURED coarse-level column, if the annotation ships one. Used for "
                         "the cell-type figure. Without it the full label is used; the path is "
                         "never truncated unless --coarse-from-path says so")
+    s.add_argument("--drop-labels", default=None, metavar="VALUES",
+                   help="label values whose cells are withheld FROM THE INTEGRATION ITSELF, "
+                        "comma-separated. They are not deleted: they stay in the delivered object "
+                        "with NaN in every embedding, so the absence is visible rather than "
+                        "inferred. Use it for a removal an earlier stage already made and "
+                        "approved - building the manifold out of cells nobody will analyse lets "
+                        "them shape the space the retained cells sit in. The per-arm rate is "
+                        "measured and printed before anything is dropped")
+    s.add_argument("--score-against", default=None, metavar="COLS",
+                   help="additional label columns to score the benchmark against, "
+                        "comma-separated. Each gets its own ranking, side by side. A "
+                        "label-supervised method whose advantage moves between them is telling "
+                        "you about the metric rather than about the method")
     s.add_argument("--colour-by", default=None, metavar="COLS",
                    help="obs columns to colour the method panels by, comma-separated. Each gets "
                         "its OWN row of panels, one per method. Annotations commonly ship several "

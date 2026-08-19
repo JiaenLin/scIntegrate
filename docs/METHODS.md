@@ -218,3 +218,56 @@ judgement** — it asserts how much residual batch structure is worth trading fo
 It is on the command line for exactly that reason. A different downstream question wants a
 different answer, every method's embedding is kept in the delivered object, and the figures exist
 because no integration decision should be made on metrics alone.
+
+---
+
+## Withholding cells from the integration
+
+```bash
+--drop-labels EXCLUDED
+```
+
+Cells carrying a named label value are withheld from **the fit**: they are not in the PCA, not in
+Harmony's clustering, not in BBKNN's graph, and not in scVI or scANVI's training. They remain in
+the delivered object, with **`NaN` in every embedding**.
+
+**Why it can matter.** Sentinel cells left in the fit shape the space the retained cells sit in,
+and they do so unevenly. BBKNN is the clearest case: it forces batch-balanced edges, so a
+population present in one library and absent from four gets neighbours across batches that
+correspond to nothing. Harmony is next — a population at 9% in one library and 0% in four is
+exactly the signal it is built to remove.
+
+**When it is legitimate, and when it is not.** Use it to propagate a removal an earlier stage
+already made and approved. That is not a new decision; it is declining to build the manifold out
+of cells nobody will analyse. Do **not** use it for a label meaning *the annotator was uncertain* —
+those are cells with real data and unknown identity, and integration is plausibly what resolves
+them.
+
+**What is recorded.** The per-arm rate is measured *before* anything is withheld and printed
+whether or not it is alarming, into `tables/integration_withheld_by_arm.csv`, with a note when the
+rate differs more than 3× across arms. The constraint on use carries the count, and the withheld
+cells are `NaN` rather than absent so a reader can tell a cell that was withheld from one that was
+never delivered — and so nothing can average them in, which a zero would.
+
+## Scoring against more than one label column
+
+```bash
+--score-against cell_type_forced,cell_compartment
+```
+
+Runs the whole benchmark again against each column and prints the rankings side by side, writing
+`tables/scib_by_label_column.csv`.
+
+One ranking is a ranking **under one label set**. Where an annotation ships several — a fine level,
+a coarse one, a forced variant in which uncertain calls have been pushed to a leaf — they disagree
+exactly where the annotation was least certain. A label-supervised method is trained on one of
+them and scored against it.
+
+If a method's advantage moves between label sets, the advantage was partly about the labels. That
+turns an argument about the metric into evidence, and the run says so explicitly when the winner
+changes.
+
+**A forced label is not a better label.** Forced calls are made at margins the walk did not
+support. Scoring against them is a diagnostic, not an upgrade, and training a supervised method on
+them would make the circularity above strictly worse — the model would be reproducing a guess and
+being scored on how faithfully it did so.
