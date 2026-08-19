@@ -58,6 +58,39 @@ def test_no_project_data():
     check("no cell types or tools from a particular dataset", not bad, ", ".join(bad[:5]))
 
 
+def test_report_fields_exist_in_payload():
+    """Anything the report renders must be in the dict report.json is built from.
+
+    Caught in a real run: colour_by and umap_n_neighbors were added to the provenance dict that
+    goes into the OBJECT's uns, while report.json is built from a different dict a few lines
+    below. The figures were drawn correctly; the record of how they were drawn rendered as None.
+    A report field reading `None` looks like a value that was not set, not like a plumbing bug,
+    which is why it survived a full run.
+    """
+    import re
+    print("\nreport fields reach report.json")
+    src = (ROOT / "scintegrate" / "cli.py").read_text()
+    rep = (ROOT / "scintegrate" / "report.py").read_text()
+
+    # every payload.get("x") the report reads
+    read = set(re.findall(r'payload\.get\(["\'](\w+)["\']', rep))
+    # the integrate payload literal
+    start = src.index('payload = {"command": "integrate"')
+    body = src[start:src.index("_write_json(out, payload)", start)]
+    written = set(re.findall(r'"(\w+)":', body))
+    # A key may legitimately be unwritten if it is only ever read as a FALLBACK -
+    # `payload.get("input") or payload.get("h5ad", "")`. Treat such a chain as satisfied when any
+    # member of it is written, so the check tests reachability rather than spelling.
+    for chain in re.findall(r'payload\.get\([^)]*\)(?:\s*or\s*payload\.get\([^)]*\))+', rep):
+        keys = set(re.findall(r'payload\.get\(["\'](\w+)["\']', chain))
+        if keys & written:
+            read -= keys
+    missing = sorted(read - written - {"command", "generated", "tool", "version"})
+    check("every field the report reads is written", not missing, f"missing: {missing}")
+    for k in ("umap_n_neighbors", "colour_by", "method_settings"):
+        check(f"{k} is in the integrate payload", k in written)
+
+
 def main():
     m = _code(ROOT / "scintegrate" / "methods.py")
     f = _code(ROOT / "scintegrate" / "figures.py")
@@ -112,6 +145,7 @@ def main():
           f"{f.count('sc.tl.umap(')} calls, {f.count('min_dist=min_dist')} set it")
 
     test_no_project_data()
+    test_report_fields_exist_in_payload()
 
     print()
     if FAILED:

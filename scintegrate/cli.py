@@ -213,6 +213,7 @@ def _assess(a):
     figs += _draw_assessment(out, rows, fnames, a)
 
     payload = {"command": "assess", "n_cells": int(A.n_obs), "batch_key": a.batch_key,
+               "input": str(a.h5ad),
                "label_key": a.label_key, "k": a.k, "n_pcs": a.n_pcs, "seed": a.seed,
                "design": D["design_note"], "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "celltypes": _plainrows(rows),
@@ -469,9 +470,12 @@ def _integrate(a):
     print(f"  obsm: {_names(obj.obsm)}")
 
     payload = {"command": "integrate", "n_cells": int(A.n_obs), "n_genes": int(A.n_vars),
+               "input": str(a.h5ad),
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
                "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
-               "umap_min_dist": a.min_dist,
+               "umap_min_dist": a.min_dist, "umap_n_neighbors": FIG.N_NEIGHBORS,
+               "colour_by": list(D.get("colour_cols") or []),
+               "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
                "design": D["design_note"], "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "counts": D["counts_note"],
                "methods": [{"method": r["method"], "kind": r["kind"], "note": r["note"],
