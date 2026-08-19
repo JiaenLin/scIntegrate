@@ -116,6 +116,23 @@ def test_figure_defects():
     check("vector output with live text", 'with_suffix(".pdf")' in f and '"pdf.fonttype": 42' in f)
 
 
+def test_withheld_padding_is_a_copy():
+    """The NaN padding must not mutate the results the metrics still have to read.
+
+    The object is written BEFORE scoring on purpose, so anything mutated at that point reaches the
+    kNN metrics, scIB, the second scoring pass and the figures. Padding in place handed them
+    full-length NaN arrays while the label and batch vectors were still at fit length, and sklearn
+    refused the NaN three hours into a run - after the object had already been written.
+    """
+    print("\nwithheld cells")
+    src = (ROOT / "scintegrate" / "cli.py").read_text()
+    fn = src[src.index("def _restore_withheld"):src.index("def _integrate")]
+    check("padding builds a new list", "wide_results" in fn and "dict(r)" in fn)
+    check("nothing is written back into the caller's results", "        r[k] = " not in fn)
+    check("callers keep the fit-length results", "A_out, results_wide = _restore_withheld" in src)
+    check("emit gets the padded copy", "emit.build(A_out, results_wide" in src)
+
+
 def main():
     m = _code(ROOT / "scintegrate" / "methods.py")
     f = _code(ROOT / "scintegrate" / "figures.py")
@@ -171,6 +188,7 @@ def main():
 
     test_no_project_data()
     test_figure_defects()
+    test_withheld_padding_is_a_copy()
     test_report_fields_exist_in_payload()
 
     print()

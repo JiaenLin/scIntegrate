@@ -261,15 +261,23 @@ def _restore_withheld(D, results):
     full = D["full_adata"]
     keep = ~drop
     n = full.n_obs
+    # A COPY, never in place. The object is written BEFORE scoring by design, so mutating the
+    # results here hands every later consumer - the kNN metrics, scIB, the second scoring pass,
+    # the figures - arrays that are NaN-padded and at the wrong length, while D["batch"] and
+    # D["label"] are still at fit length. That is exactly how this failed the first time:
+    # sklearn refused the NaN three hours in, after the object had already been written.
+    wide_results = []
     for r in results:
+        w = dict(r)
         for k in ("emb", "umap"):
             v = r.get(k)
             if v is None:
                 continue
-            wide = np.full((n, np.asarray(v).shape[1]), np.nan, dtype="float32")
-            wide[keep] = np.asarray(v, dtype="float32")
-            r[k] = wide
-    return full, results
+            arr = np.full((n, np.asarray(v).shape[1]), np.nan, dtype="float32")
+            arr[keep] = np.asarray(v, dtype="float32")
+            w[k] = arr
+        wide_results.append(w)
+    return full, wide_results
 
 
 # ---------------------------------------------------------------------------------- integrate
@@ -416,11 +424,11 @@ def _integrate(a):
     (out / "objects").mkdir(parents=True, exist_ok=True)
     op = out / "objects" / a.object_name
     print(f"\nwriting the embeddings BEFORE scoring, so scoring cannot lose them", flush=True)
-    A_out, results = _restore_withheld(D, results)
+    A_out, results_wide = _restore_withheld(D, results)
     if D.get("drop_mask") is not None:
         print(f"  {D['drop_note']}")
     emit.write_h5ad(
-        emit.build(A_out, results, obs_keep_early, chosen=None,
+        emit.build(A_out, results_wide, obs_keep_early, chosen=None,
                    benchmark={"status": "not scored yet"},
                    constraint="written before scoring; re-read after the run completes",
                    provenance={"stage": "embeddings only"}),
@@ -600,7 +608,9 @@ def _integrate(a):
              "metrics": {r["method"]: {k: v["value"] for k, v in r["metrics"].items()}
                          for r in results},
              "chosen": chosen}
-    obj = emit.build(A_out, results, obs_keep, chosen=chosen["default"], benchmark=bench,
+    # rebuilt from the CURRENT results: the metrics were attached after the first write
+    A_out, results_wide = _restore_withheld(D, results)
+    obj = emit.build(A_out, results_wide, obs_keep, chosen=chosen["default"], benchmark=bench,
                      assessment={"summary": summ, "celltypes": _plainrows(arows)},
                      constraint=constraint, provenance=prov)
     emit.write_h5ad(obj, op)          # rewritten in place, now WITH the benchmark
