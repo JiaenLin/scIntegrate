@@ -278,6 +278,43 @@ def aggregate(metrics, w_bio=0.6):
                        for k, v in metrics.items() if not _real(v["value"])}}
 
 
+#: Methods that are SHOWN the label column during training. Their biological-conservation
+#: metrics are computed on that same column, so those metrics are not measuring the same thing
+#: for them as for a method that never saw it.
+LABEL_SUPERVISED = ("scanvi",)
+
+
+def supervision_caveat(ranked, label_key):
+    """The disclosure a label-supervised winner requires. Returns a sentence, or "".
+
+    THIS IS THE MOST IMPORTANT SENTENCE THIS MODULE PRODUCES AND IT IS NOT A METRIC.
+
+    scIB's biological-conservation half is NMI, ARI, ASW-label and the isolated-label scores -
+    every one of them computed against the cell-type column. scANVI is TRAINED on that column.
+    So when it wins the bio half, part of what is being measured is that it was told the answer,
+    and it is being ranked against methods that were not.
+
+    This is not a defect in scANVI, which is doing exactly what it is designed to do, and not a
+    reason to drop it - a supervised method genuinely may be the right choice. It is a reason the
+    comparison cannot be read as though all five entrants sat the same exam. Stated wherever the
+    ranking is, because a reader who does not already know this will read the totals as
+    like-for-like, and nothing else on the page would tell them otherwise.
+    """
+    sup = [m for m in ranked if m in LABEL_SUPERVISED]
+    if not sup:
+        return ""
+    winner = ranked[0] if ranked else None
+    lead = (f"{winner} is ranked first and " if winner in LABEL_SUPERVISED
+            else f"{', '.join(sup)} appear in this ranking and ")
+    return (
+        f"{lead}was TRAINED on the label column {label_key!r}. The biological-conservation half "
+        f"of the scIB total - NMI, ARI, ASW-label, isolated-label - is computed against that same "
+        f"column. A label-supervised method is therefore partly being scored on information it "
+        f"was given, against methods that never saw it. This is not a defect in the method and "
+        f"not a reason to exclude it; it is a reason the totals are not a like-for-like ranking. "
+        f"Read the batch half, which is unaffected, and read the figures.")
+
+
 def choose_default(rows):
     """The highest scIB total, and why it is a choice about the EMBEDDING and nothing else.
 
@@ -306,4 +343,6 @@ def choose_default(rows):
         "reason": ("chosen on the scIB total: the mean of the biological-conservation metrics "
                    f"weighted {top['aggregate']['w_bio']}, the mean of the batch-correction "
                    f"metrics weighted {round(1 - top['aggregate']['w_bio'], 3)}"),
+        "label_supervised": [m for m in (r["method"] for r in ranked)
+                             if m in LABEL_SUPERVISED],
     }

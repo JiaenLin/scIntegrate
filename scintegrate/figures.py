@@ -27,15 +27,31 @@ def _plt():
 MIN_DIST = 0.2
 
 
-def _umap(emb, seed=0, min_dist=MIN_DIST):
-    """A 2-D view. Methods returning a PC space get one computed; BBKNN already returns 2-D."""
-    emb = np.asarray(emb)
+#: Neighbourhood size for the layout. scanpy's own default, stated rather than inherited: it is
+#: the parameter a UMAP's appearance is most sensitive to after min_dist, and a figure whose
+#: layout parameters are implicit cannot be reproduced from the report.
+N_NEIGHBORS = 15
+
+
+def _umap(emb, seed=0, min_dist=MIN_DIST, n_neighbors=N_NEIGHBORS):
+    """A 2-D view, computed by scanpy exactly as a standard workflow would.
+
+    This is `sc.pp.neighbors` then `sc.tl.umap` on the method's own coordinates - no custom
+    layout, no hand-rolled projection. The only departure from scanpy's defaults is min_dist,
+    which is 0.2 rather than 0.5 so these panels match the embedding the annotation ships and
+    the two can be read against each other; every parameter is recorded in the report.
+
+    The AnnData built here holds the embedding AS ITS X and the graph is built on `use_rep="X"`.
+    An earlier version created a dummy one-column X and hid the real coordinates in
+    `obsm["X_pca"]`, which worked but made the object a puzzle: anything inspecting it saw a
+    matrix of zeros, and `use_rep` was the only thing pointing at the data.
+    """
+    emb = np.asarray(emb, dtype="float32")
     if emb.shape[1] == 2:
-        return emb
+        return emb                      # a graph method's layout, already computed by scanpy
     import scanpy as sc, anndata as ad
-    A = ad.AnnData(X=np.zeros((emb.shape[0], 1), dtype="float32"))
-    A.obsm["X_pca"] = emb
-    sc.pp.neighbors(A, use_rep="X_pca", random_state=seed)
+    A = ad.AnnData(X=emb)
+    sc.pp.neighbors(A, use_rep="X", n_neighbors=n_neighbors, random_state=seed)
     sc.tl.umap(A, min_dist=min_dist, random_state=seed)
     return np.asarray(A.obsm["X_umap"])
 
@@ -49,11 +65,26 @@ def _same_scale(views):
             allpts[:, 1].min() - pad[1], allpts[:, 1].max() + pad[1])
 
 
-def panel(views, colour_by, order, colours, title, out, s=1.0):
+def _point_size(n):
+    """Points sized for the number of cells. A fixed size that reads well at 5,000 cells is a
+    solid block at 100,000, and the panel then shows the outline of the manifold rather than
+    where the populations are."""
+    if n > 200_000:
+        return 0.35
+    if n > 80_000:
+        return 0.6
+    if n > 20_000:
+        return 1.2
+    return 3.0
+
+
+def panel(views, colour_by, order, colours, title, out, s=None):
     """One row per colouring, one column per method, all sharing one scale."""
     p = _plt()
     names = list(views)
     xlo, xhi, ylo, yhi = _same_scale(views)
+    if s is None:
+        s = _point_size(len(np.asarray(colour_by)))
     fig, axs = p.subplots(1, len(names), figsize=(5.0 * len(names), 5.2), squeeze=False)
     for ax, m in zip(axs.ravel(), names):
         xy = views[m]

@@ -60,6 +60,31 @@ def _esc(v):
     return html.escape("" if v is None else str(v), quote=True)
 
 
+def _settings_table(settings):
+    """Every method's effective parameters, one row per parameter."""
+    if not settings:
+        return "<div class='warn'>No per-method settings were recorded for this run.</div>"
+    rows = []
+    for m in sorted(settings):
+        d = settings[m] or {}
+        if not d:
+            rows.append(f"<tr><td><code>{_esc(m)}</code></td><td colspan='2' class='sub'>"
+                        f"recorded nothing</td></tr>")
+            continue
+        first = True
+        for k, v in d.items():
+            flag = " <b>(not the package default)</b>" if k in (
+                "max_iter_harmony", "n_samples_per_label") else ""
+            warn = (" <b>&larr; this method is trained on the label column it is scored against"
+                    "</b>" if k == "USES_LABELS" else "")
+            rows.append(
+                f"<tr><td>{('<code>' + _esc(m) + '</code>') if first else ''}</td>"
+                f"<td><code>{_esc(k)}</code></td><td>{_esc(v)}{flag}{warn}</td></tr>")
+            first = False
+    return ("<div class='wrap'><table><tr><th>method</th><th>parameter</th><th>value</th></tr>"
+            + "".join(rows) + "</table></div>")
+
+
 def _num(v, fmt="{:.4f}", dash="—"):
     return dash if v is None else fmt.format(v)
 
@@ -308,6 +333,12 @@ def write_integrate(out_dir, payload, figs):
                 f"structure is worth trading for retained biology, and a different downstream "
                 f"question wants a different answer. It is exposed on the command line for "
                 f"exactly that reason.</div>")
+        if ch.get("supervision_caveat"):
+            # Placed immediately under the winner, not in a methods appendix. A reader who does
+            # not already know that scANVI is supervised will read the totals as like-for-like,
+            # and nothing else on this page would tell them otherwise.
+            head += (f"<div class='bad'><b>The entrants did not all sit the same exam.</b><br>"
+                     f"{_esc(ch['supervision_caveat'])}</div>")
         if not ch.get("comparable", True):
             head += ("<div class='bad'><b>The totals do not all rest on the same number of "
                      "metrics.</b> Compare them only with the per-method counts in the benchmark "
@@ -358,6 +389,14 @@ perfectly on mixing once every neighbourhood is a random sample of libraries. An
 retention figure is not measuring the same operation as an <code>embed</code>-kind method's — the
 <b>kind</b> column is there to stop those two being read as one.</div>
 
+<h2>How each method was actually run</h2>
+<p class="sub">The EFFECTIVE settings, recorded by each method as it ran - not the defaults in the
+documentation, and not what the command line asked for. Where a value departs from the package's
+own default it is marked, because a benchmark whose settings are only in source code is a
+benchmark nobody can reproduce or challenge. The reasoning behind each choice is in
+<code>docs/METHODS.md</code>.</p>
+{_settings_table(payload.get('method_settings') or {})}
+
 <h2>Before and after, at one scale</h2>
 <p class="lede">The leftmost panel is always <code>none</code> — the uncorrected baseline. Every
 panel shares one set of axis limits, because per-panel autoscaling makes a dispersed method look
@@ -370,6 +409,8 @@ compact and is the easiest way to mislead with this figure.</p>
 <tr><td>X</td><td>log-normalised, over all samples together</td></tr>
 <tr><td>layers</td><td><code>counts</code> (raw integers) · <code>lognorm</code></td></tr>
 <tr><td>default embedding</td><td><code>{_esc('X_' + ch['default'] if ch.get('default') else 'none chosen')}</code></td></tr>
+<tr><td>colour columns</td><td><code>{_esc(', '.join(payload.get('colour_by') or []) or 'label/l1 keys')}</code></td></tr>
+<tr><td>UMAP layout</td><td><code>{_esc(f"scanpy pp.neighbors(n_neighbors={payload.get('umap_n_neighbors')}) then tl.umap(min_dist={payload.get('umap_min_dist')})")}</code></td></tr>
 <tr><td>every embedding</td><td>{_esc(', '.join('X_' + m['method'] for m in payload.get('methods', []) if m.get('kind') == 'embed'))}</td></tr>
 <tr><td>uncorrected baseline</td><td><code>X_pca</code></td></tr>
 <tr><td>obs</td><td>the batch key, the label column(s) and the declared design factors — nothing else</td></tr>

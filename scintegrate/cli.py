@@ -38,6 +38,10 @@ def _load(a):
         sent = tuple(s for s in a.label_sentinel if s)
     D = inputs.read(a.h5ad, a.batch_key, a.label_key, l1_key=a.l1_key,
                     sentinels=sent, coarse_from_path=a.coarse_from_path)
+    D["colour_cols"], D["colour_why"] = inputs.colour_columns(
+        D["adata"].obs, _split(getattr(a, "colour_by", None) or ""),
+        a.batch_key, a.label_key, a.l1_key)
+    print("  colour : " + ", ".join(f"{c} ({D['colour_why'][c]})" for c in D["colour_cols"]))
     A = D["adata"]
     print(f"{A.n_obs:,} cells x {A.n_vars:,} genes")
     print(f"  batch  {a.batch_key!r}: {len(set(D['batch']))} level(s)")
@@ -285,13 +289,15 @@ def _integrate(a):
     for m in ok:
         print(f"\n=== {m} ===", flush=True)
         r = ME.run(A, m, a.batch_key, label_key=a.label_key, unlabeled=sent, hvg=D["hvg"],
-                   n_latent=a.n_latent, n_pcs=a.n_pcs, seed=a.seed, max_epochs=a.max_epochs)
+                   n_latent=a.n_latent, n_pcs=a.n_pcs, seed=a.seed, max_epochs=a.max_epochs,
+                   scanvi_max_epochs=getattr(a, "scanvi_max_epochs", None))
         r["method"] = m
         print(f"    {r['note']}")
         results.append(r)
 
     print("\ndrawing a 2-D view per method", flush=True)
     import scanpy as sc
+    from . import figures as FIG
     from .figures import _umap
     print(f"  UMAP min_dist={a.min_dist} for every method, so the panels are comparable")
     for r in results:
@@ -312,7 +318,11 @@ def _integrate(a):
     # back as 10 MB of obs and var. So the deliverable is written here, complete but for the
     # benchmark, and rewritten once the scores exist. A scoring failure now costs the
     # metrics, and `scintegrate score` recomputes those in minutes from this file.
-    obs_keep_early = [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
+    # Every column a panel is coloured by must survive the slim, or the figure that is the whole
+    # point of the stage is drawn from a column that is no longer there.
+    obs_keep_early = list(dict.fromkeys(
+        [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
+        + list(D.get("colour_cols") or [])))
     for _f, _v in D["covariates"].items():
         if _f not in A.obs:
             A.obs[_f] = _v
@@ -427,10 +437,16 @@ def _integrate(a):
             "batch_key": a.batch_key,
             "label_key": a.label_key, "l1_key": a.l1_key or "", "seed": a.seed,
             "k": a.k, "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
+            "umap_n_neighbors": FIG.N_NEIGHBORS,
+            "colour_by": list(D.get("colour_cols") or []),
+            "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
             "methods_compared": ok, "methods_absent": missing,
             "design": D["design_note"], "sentinels": D["sentinels"],
             "scib_metrics_computed_on": int(real.sum()),
             "scib_metrics_excluded_sentinels": n_drop}
+    chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
+    if chosen["supervision_caveat"]:
+        print("\n  ! " + chosen["supervision_caveat"])
     bench = {"aggregate": {r["method"]: r["aggregate"] for r in results},
              "metrics": {r["method"]: {k: v["value"] for k, v in r["metrics"].items()}
                          for r in results},
@@ -540,12 +556,31 @@ def _draw(out, views, D, a, tag=""):
     def cols(cats):
         return {c: plt.cm.tab20(i % 20) for i, c in enumerate(cats)}
 
-    co = D["coarse"]
-    cats = sorted(set(co))
-    figs.append(("coloured by cell type",
-                 panel(views, co, cats, cols(cats), "Cell type", fd / f"F1_celltype_{tag}.png"),
-                 f"Colour is {D['coarse_note']}. If a method has moved cells away from their own "
-                 f"kind, it shows here before it shows in any table."))
+    # One row of method panels PER LABEL COLUMN. Where two label columns disagree is where the
+    # annotation was least certain, and that is exactly where a correction is most likely to have
+    # moved something - a single row captioned "cell type" hides which column it was drawn from,
+    # and hides the disagreement entirely.
+    ccols = [c for c in (D.get("colour_cols") or []) if c in D["adata"].obs]
+    if not ccols:
+        co = D["coarse"]
+        cats = sorted(set(co))
+        figs.append(("coloured by cell type",
+                     panel(views, co, cats, cols(cats), "Cell type",
+                           fd / f"F1_celltype_{tag}.png"),
+                     f"Colour is {D['coarse_note']}. If a method has moved cells away from their "
+                     f"own kind, it shows here before it shows in any table."))
+    for i, ccol in enumerate(ccols, start=1):
+        v = np.asarray(D["adata"].obs[ccol].astype(str))
+        cats = sorted(set(v))
+        figs.append((f"coloured by {ccol}",
+                     panel(views, v, cats, cols(cats), f"{ccol}  ({len(cats)} values)",
+                           fd / f"F1_{i}_label_{ccol}_{tag}.png"),
+                     f"Colour is the measured obs column {ccol!r}, {len(cats)} values, drawn over "
+                     f"every method at one scale. If a method has moved cells away from their own "
+                     f"kind, it shows here before it shows in any table. Read this row against "
+                     f"the other label rows: they disagree where the annotation was least "
+                     f"certain, which is where a correction is most likely to have moved "
+                     f"something."))
     bat = D["batch"]
     bcats = sorted(set(bat))
     figs.append(("coloured by batch",
@@ -729,6 +764,18 @@ def _common(s):
                    help="a MEASURED coarse-level column, if the annotation ships one. Used for "
                         "the cell-type figure. Without it the full label is used; the path is "
                         "never truncated unless --coarse-from-path says so")
+    s.add_argument("--colour-by", default=None, metavar="COLS",
+                   help="obs columns to colour the method panels by, comma-separated. Each gets "
+                        "its OWN row of panels, one per method. Annotations commonly ship several "
+                        "label columns for the same cells - a fine level and a coarse one, and a "
+                        "forced or resolved variant of each - and they disagree exactly where the "
+                        "annotation was least certain, which is where a method is most likely to "
+                        "have moved something. Default: --l1-key and --label-key")
+    s.add_argument("--scanvi-max-epochs", type=int, default=None, metavar="N",
+                   help="fine-tuning epochs for scANVI after it is initialised from the trained "
+                        "scVI model. scvi-tools' own scANVI tutorial uses 20; left unset it "
+                        "inherits the same length formula scVI uses, which on a large cohort is "
+                        "several times that. Unset by default so no existing comparison changes")
     s.add_argument("--coarse-from-path", action="store_true",
                    help="derive the coarse colouring as the first component of --label-key. This "
                         "is a TRUNCATION of one walk, not an independent annotation, and is "

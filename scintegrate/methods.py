@@ -104,7 +104,8 @@ def _hvg_subset(adata, hvg, n_top_fallback=2000):
 
 
 def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
-        n_latent=30, n_pcs=50, seed=0, max_epochs=None, counts_layer="counts"):
+        n_latent=30, n_pcs=50, seed=0, max_epochs=None, scanvi_max_epochs=None,
+        counts_layer="counts", **kwargs):
     """Run one method. Returns {"kind", "emb", "adata", "note"}.
 
     `emb` is the corrected coordinate space for `embed` methods and None for `graph` methods,
@@ -112,16 +113,40 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
     """
     import scanpy as sc
 
+    have_pcs = int(np.asarray(adata.obsm["X_pca"]).shape[1])
+    used_pcs = min(n_pcs, have_pcs)
+    if used_pcs < n_pcs:
+        # `emb[:, :50]` on a 30-component PCA returns 30 columns and raises nothing. Three of
+        # the five methods read this array, so a silent shortfall changes the comparison for all
+        # of them and appears nowhere.
+        print(f"    NOTE: --n-pcs {n_pcs} but the object's X_pca has {have_pcs} components; "
+              f"using {used_pcs}. Every method reading X_pca uses the same {used_pcs}.")
+
     if method == "none":
-        return {"kind": "embed", "emb": np.asarray(adata.obsm["X_pca"])[:, :n_pcs],
-                "adata": None, "note": f"the object's own X_pca, first {n_pcs} components"}
+        return {"kind": "embed", "emb": np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
+                "adata": None,
+                "note": f"the object's own X_pca, first {used_pcs} of {have_pcs} components",
+                "settings": {"n_pcs": used_pcs, "pcs_available": have_pcs,
+                             "source": "obsm['X_pca'], computed upstream and reused"}}
 
     if method == "harmony":
         import harmonypy
-        h = harmonypy.run_harmony(np.asarray(adata.obsm["X_pca"])[:, :n_pcs],
-                                  adata.obs, [batch_key], max_iter_harmony=20)
+        # `random_state` is a real parameter of run_harmony with its own default of 0. Not
+        # passing it meant --seed changed scVI, scANVI and every UMAP while leaving Harmony on a
+        # fixed internal seed - so two runs at different seeds produced a Harmony embedding that
+        # was identical and four others that were not, with nothing saying so.
+        #
+        # max_iter_harmony is 20 against harmonypy's default of 10: a deliberate deviation, so
+        # that a cohort with many libraries is not scored on a correction that was still moving
+        # when it stopped. It is recorded here and in docs/METHODS.md rather than left in code.
+        kw = dict(max_iter_harmony=20, random_state=seed)
+        h = harmonypy.run_harmony(np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
+                                  adata.obs, [batch_key], **kw)
         return {"kind": "embed", "emb": np.asarray(h.Z_corr).T, "adata": None,
-                "note": f"Harmony on {n_pcs} PCs, max_iter_harmony=20"}
+                "note": f"Harmony on {used_pcs} PCs, max_iter_harmony=20, random_state={seed}",
+                "settings": {"n_pcs": used_pcs, "max_iter_harmony": 20, "random_state": seed,
+                             "theta": "harmonypy default (2.0)",
+                             "sigma": "harmonypy default (0.1)"}}
 
     if method == "bbknn":
         import bbknn, anndata as ad
@@ -133,11 +158,22 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         B.obs_names = list(adata.obs_names.astype(str))
         B.obs[batch_key] = adata.obs[batch_key].astype(str).values
         B.obs[batch_key] = B.obs[batch_key].astype("category")
-        B.obsm["X_pca"] = np.asarray(adata.obsm["X_pca"])[:, :n_pcs]
-        bbknn.bbknn(B, batch_key=batch_key, n_pcs=n_pcs)
+        B.obsm["X_pca"] = np.asarray(adata.obsm["X_pca"])[:, :used_pcs]
+        # neighbors_within_batch is BBKNN's own default of 3. Its documentation suggests raising
+        # it when there are few batches and lowering it when there are many, since the graph
+        # holds n_batches x neighbors_within_batch edges per cell; at 3 a ten-library cohort
+        # already gets 30. Left at the default and RECORDED, rather than tuned silently.
+        nwb = int(kwargs.get("neighbors_within_batch", 3)) if kwargs else 3
+        n_batches = int(adata.obs[batch_key].astype(str).nunique())
+        bbknn.bbknn(B, batch_key=batch_key, n_pcs=used_pcs, neighbors_within_batch=nwb)
         return {"kind": "graph", "emb": None, "adata": B,
-                "note": f"BBKNN on {n_pcs} PCs. The GRAPH is the result; there is no corrected "
-                        f"coordinate space, so it is scored on connectivities"}
+                "note": (f"BBKNN on {used_pcs} PCs, neighbors_within_batch={nwb} over "
+                         f"{n_batches} batches ({nwb * n_batches} edges per cell). The GRAPH is "
+                         f"the result; there is no corrected coordinate space, so it is scored "
+                         f"on connectivities"),
+                "settings": {"n_pcs": used_pcs, "neighbors_within_batch": nwb,
+                             "n_batches": n_batches, "trim": "bbknn default (None)",
+                             "metric": "bbknn default (euclidean, annoy)"}}
 
     if method in ("scvi", "scanvi"):
         import scvi
@@ -147,10 +183,19 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         scvi.model.SCVI.setup_anndata(sub, layer=counts_layer, batch_key=batch_key)
         m = scvi.model.SCVI(sub, n_latent=n_latent)
         m.train(max_epochs=max_epochs, accelerator="auto")
+        eff = int(getattr(m, "history", {}).get("elbo_train", []).shape[0]) \
+            if hasattr(getattr(m, "history", {}).get("elbo_train", None), "shape") else None
+        base = {"n_latent": n_latent, "n_genes": int(sub.n_vars), "seed": seed,
+                "counts_layer": counts_layer, "batch_key": batch_key,
+                "max_epochs_requested": max_epochs if max_epochs else "scvi-tools default",
+                "max_epochs_run": eff,
+                "gene_selection": hvg_note}
         if method == "scvi":
             return {"kind": "embed", "emb": np.asarray(m.get_latent_representation()),
                     "adata": None,
-                    "note": f"scVI, {n_latent} latent dimensions, trained on {hvg_note}"}
+                    "note": (f"scVI, {n_latent} latent dimensions, trained on {hvg_note}"
+                             + (f", {eff} epochs" if eff else "")),
+                    "settings": base}
 
         # scANVI: the annotator's sentinels are the unlabelled category. That is not a
         # workaround - a cell the annotation declined to call IS unlabelled, and passing it as a
@@ -164,11 +209,28 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         sub.obs["_scanvi_labels"] = lab.values
         s = scvi.model.SCANVI.from_scvi_model(m, labels_key="_scanvi_labels",
                                              unlabeled_category=UNL, adata=sub)
-        s.train(max_epochs=max_epochs, n_samples_per_label=100, accelerator="auto")
+        # scANVI is a FINE-TUNE of an already-trained scVI model, and scvi-tools' own scANVI
+        # tutorial uses max_epochs=20 with n_samples_per_label=100. Left at None it inherits the
+        # same length formula scVI uses, which on a cohort-sized object is several times the
+        # tutorial value - a longer fit against the labels, scored afterwards on label-based
+        # metrics. Exposed as its own flag, defaulting to the current behaviour so that no
+        # existing comparison changes underneath anyone, and printed either way.
+        sm = scanvi_max_epochs if scanvi_max_epochs is not None else max_epochs
+        s.train(max_epochs=sm, n_samples_per_label=100, accelerator="auto")
+        seff = int(getattr(s, "history", {}).get("elbo_train", []).shape[0]) \
+            if hasattr(getattr(s, "history", {}).get("elbo_train", None), "shape") else None
         return {"kind": "embed", "emb": np.asarray(s.get_latent_representation()),
                 "adata": None,
-                "note": (f"scANVI from the scVI model, {n_latent} latent dimensions, "
+                "note": (f"scANVI fine-tuned from the scVI model, {n_latent} latent dimensions, "
                          f"{hvg_note}. {n_unl:,} cells carried an annotator sentinel and were "
-                         f"passed as unlabelled")}
+                         f"passed as unlabelled"
+                         + (f", {seff} fine-tuning epochs" if seff else "")),
+                "settings": dict(base, label_key=label_key, n_samples_per_label=100,
+                                 unlabelled_cells=n_unl,
+                                 scanvi_max_epochs_requested=(
+                                     sm if sm else "scvi-tools default"),
+                                 scanvi_max_epochs_run=seff,
+                                 USES_LABELS=("this method is TRAINED on the label column it is "
+                                              "later scored against on label-based metrics"))}
 
     raise ValueError(f"unknown method: {method}")

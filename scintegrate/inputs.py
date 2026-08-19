@@ -133,8 +133,37 @@ def hvg_mask(A, key="highly_variable"):
     return None
 
 
+def colour_columns(obs, requested, batch_key, label_key, l1_key=None):
+    """The obs columns the method panels are coloured by, and why each was chosen.
+
+    An annotation now commonly ships SEVERAL label columns for the same cells - a fine level and
+    a coarse one, and a forced or resolved variant of each where cells the annotator declined
+    have been pushed to a leaf. They disagree exactly where the annotation was least certain,
+    which is where an integration method is most likely to have moved something. Colouring by
+    one of them and calling the figure "cell type" hides that: the panel looks the same whichever
+    was picked, and the reader cannot tell which they are looking at.
+
+    So every requested column gets its own row of method panels. Nothing is inferred about what
+    the columns MEAN - they are drawn side by side and named.
+    """
+    out, why = [], {}
+    if requested:
+        for c in requested:
+            if c not in obs:
+                raise Refuse(f"--colour-by names {c!r}, which is not an obs column. "
+                             f"Present: {', '.join(map(str, list(obs.columns)[:20]))}")
+            out.append(c)
+            why[c] = "named in --colour-by"
+    else:
+        for c, w in ((l1_key, "--l1-key"), (label_key, "--label-key")):
+            if c and c in obs and c not in out:
+                out.append(c)
+                why[c] = f"{w} (pass --colour-by to draw more label columns)"
+    return out, why
+
+
 def read(path, batch_key, label_key, l1_key=None, sentinels=DEFAULT_SENTINELS,
-         coarse_from_path=False):
+         coarse_from_path=False, colour_by=None):
     """Open the object and return it with everything the stage needs, or refuse by name."""
     import anndata as ad
     A = ad.read_h5ad(path)
@@ -149,6 +178,7 @@ def read(path, batch_key, label_key, l1_key=None, sentinels=DEFAULT_SENTINELS,
         "batch": np.asarray(A.obs[batch_key].astype(str)),
         "label": lab, "is_real": is_real, "sentinels": sent,
         "coarse": coarse, "coarse_note": coarse_note,
+        "colour_cols": None, "colour_why": None,
         "counts_ok": counts_ok, "counts_note": counts_note,
         "hvg": hvg_mask(A),
     }
