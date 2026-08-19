@@ -558,8 +558,11 @@ def _draw(out, views, D, a, tag=""):
     fd = out / "figures"
     figs = []
 
+    from .figures import palette
+    sentinels = tuple(D.get("sentinels") or ())
+
     def cols(cats):
-        return {c: plt.cm.tab20(i % 20) for i, c in enumerate(cats)}
+        return palette(cats, sentinels)
 
     # One row of method panels PER LABEL COLUMN. Where two label columns disagree is where the
     # annotation was least certain, and that is exactly where a correction is most likely to have

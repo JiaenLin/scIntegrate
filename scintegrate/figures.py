@@ -15,10 +15,49 @@ import numpy as np
 
 GREY = "#D9D9D9"; INK = "#1a1a1a"
 
+#: Okabe-Ito, extended by golden-angle hue generation past the eighth entry. Distinguishable with
+#: any common form of colour vision and in greyscale; tab20 is neither, and a cohort with fifteen
+#: populations exhausts any hand-picked list.
+OKABE_ITO = ["#0072B2", "#E69F00", "#009E73", "#CC79A7",
+             "#56B4E9", "#D55E00", "#F0E442", "#000000"]
+
+
+def palette(labels, sentinels=()):
+    """A colour per label, with annotator sentinels forced to GREY.
+
+    A sentinel is the annotator declining to make a call, not a cell type. Giving it a hue of its
+    own puts it in the legend beside real populations as though it were one, and nothing in the
+    figure tells a reader otherwise. Held out of the palette entirely, so removing or adding a
+    sentinel never shifts the colour of a real population.
+    """
+    import colorsys
+    sent = {str(s) for s in (sentinels or ())}
+    real = [l for l in sorted(map(str, set(labels))) if l not in sent]
+    out = {}
+    for i, l in enumerate(real):
+        if i < len(OKABE_ITO):
+            out[l] = OKABE_ITO[i]
+        else:
+            h = ((i - len(OKABE_ITO)) * 0.381966) % 1.0
+            out[l] = "#%02x%02x%02x" % tuple(
+                int(255 * c) for c in colorsys.hls_to_rgb(h, 0.52, 0.62))
+    for l in map(str, set(labels)):
+        if l in sent:
+            out[l] = GREY
+    return out
+
+
+def _legend_label(lab, colours):
+    return f"{lab} (not a cell type)" if colours.get(lab) == GREY else str(lab)
+
 
 def _plt():
     import matplotlib; matplotlib.use("Agg")
-    import matplotlib.pyplot as p; return p
+    import matplotlib.pyplot as p
+    # Type 42 embeds TrueType rather than converting glyphs to paths. Matplotlib's default, type 3,
+    # lands in Illustrator with text that cannot be selected or corrected, and journals reject it.
+    p.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42, "svg.fonttype": "none"})
+    return p
 
 
 #: UMAP min_dist for every view this tool draws. 0.2 rather than scanpy's 0.5, so the panels match
@@ -95,15 +134,30 @@ def panel(views, colour_by, order, colours, title, out, s=None):
                            linewidths=0, rasterized=True)
         ax.set_xlim(xlo, xhi); ax.set_ylim(ylo, yhi)
         ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
         ax.set_title(m, fontsize=11, loc="left")
-    import matplotlib.patches as mp
-    fig.legend(handles=[mp.Patch(color=colours.get(l, GREY), label=str(l)) for l in order],
-               loc="lower center", ncol=min(len(order), 8), frameon=False, fontsize=8,
-               bbox_to_anchor=(0.5, -0.01))
+    # A publication panel names its axes even where the values carry no units. An unlabelled
+    # embedding is the commonest reason a reader asks what they are looking at.
+    axs.ravel()[0].set_xlabel("UMAP 1", loc="left", fontsize=9)
+    axs.ravel()[0].set_ylabel("UMAP 2", loc="bottom", fontsize=9)
+
+    import matplotlib.lines as ml
+    fig.legend(handles=[ml.Line2D([], [], marker="o", ls="", ms=5,
+                                  color=colours.get(l, GREY), label=_legend_label(l, colours))
+                        for l in order],
+               loc="lower center", ncol=min(len(order), 6), frameon=False, fontsize=8,
+               bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(title + "   —   every panel at the SAME scale", fontsize=12, x=.01, ha="left")
-    fig.subplots_adjust(bottom=0.14, top=0.88)
+    # subplots_adjust sets ONLY what it is given. Passing bottom and top left matplotlib's
+    # defaults of left=0.125 and right=0.9 in place, so on a 25-inch figure 3.1 inches of blank
+    # sat to the left of the first panel and 2.5 to the right of the last - 22.5% of the width -
+    # and every panel was drawn smaller for it.
+    fig.subplots_adjust(left=0.012, right=0.995, bottom=0.15, top=0.88, wspace=0.04)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=130, bbox_inches="tight"); p.close(fig)
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")   # vector, for a manuscript
+    p.close(fig)
     return out
 
 
@@ -176,9 +230,13 @@ def highlight(views, mask, label, out, s_bg=0.8, s_hi=3.0):
         ax.scatter(xy[m, 0], xy[m, 1], s=s_hi, c=["#c0504d"], linewidths=0, rasterized=True)
         ax.set_xlim(xlo, xhi); ax.set_ylim(ylo, yhi)
         ax.set_xticks([]); ax.set_yticks([]); ax.set_title(name, fontsize=11, loc="left")
+        for sp in ax.spines.values():
+            sp.set_visible(False)
     fig.suptitle(f"{label} (red) against every other cell (grey) — same scale.\n"
                  f"Read whether it sits WITH its counterparts or is dispersed through everything.",
                  fontsize=11, x=.01, ha="left")
-    fig.subplots_adjust(top=0.84)
-    fig.savefig(out, dpi=130, bbox_inches="tight"); p.close(fig)
+    fig.subplots_adjust(left=0.012, right=0.995, top=0.84, bottom=0.02, wspace=0.04)
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
+    p.close(fig)
     return out

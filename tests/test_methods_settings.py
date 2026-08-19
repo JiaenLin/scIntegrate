@@ -91,6 +91,31 @@ def test_report_fields_exist_in_payload():
         check(f"{k} is in the integrate payload", k in written)
 
 
+def test_figure_defects():
+    """The five defects the stage-3 panels shipped with, each asserted against the source.
+
+    They were all found and fixed once in a sibling tool and never carried back here, which is why
+    they are pinned rather than trusted: a fix that lives in one repository is a fix that will be
+    re-lost in the next.
+    """
+    print("\nfigure defects")
+    f = _code(ROOT / "scintegrate" / "figures.py")
+    c = _code(ROOT / "scintegrate" / "cli.py")
+
+    # subplots_adjust sets ONLY what it is given; bottom/top alone leaves 22.5% of the width blank
+    import re
+    for call in re.findall(r"subplots_adjust\(([^)]*)\)", f):
+        check("subplots_adjust sets left and right", "left=" in call and "right=" in call, call)
+
+    check("sentinels are held out of the palette", "def palette" in f and "sentinels" in f)
+    check("a sentinel is labelled, not just greyed", "not a cell type" in f)
+    check("no tab20 anywhere", "tab20" not in f and "tab20" not in c,
+          "tab20 is neither colourblind-safe nor long enough for a real cohort")
+    check("colourblind-safe palette", "OKABE_ITO" in f)
+    check("embedding axes are named", "UMAP 1" in f)
+    check("vector output with live text", 'with_suffix(".pdf")' in f and '"pdf.fonttype": 42' in f)
+
+
 def main():
     m = _code(ROOT / "scintegrate" / "methods.py")
     f = _code(ROOT / "scintegrate" / "figures.py")
@@ -145,6 +170,7 @@ def main():
           f"{f.count('sc.tl.umap(')} calls, {f.count('min_dist=min_dist')} set it")
 
     test_no_project_data()
+    test_figure_defects()
     test_report_fields_exist_in_payload()
 
     print()
