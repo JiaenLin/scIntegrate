@@ -257,6 +257,11 @@ def _restore_withheld(D, results):
     import numpy as np
     drop = D.get("drop_mask")
     if drop is None:
+        for r in results:
+            ad_ = r.get("adata")
+            if ad_ is not None and getattr(ad_, "obsp", None):
+                r["graph"] = {s: ad_.obsp[s] for s in ("connectivities", "distances")
+                              if s in ad_.obsp}
         return D["adata"], results
     full = D["full_adata"]
     keep = ~drop
@@ -266,9 +271,24 @@ def _restore_withheld(D, results):
     # the figures - arrays that are NaN-padded and at the wrong length, while D["batch"] and
     # D["label"] are still at fit length. That is exactly how this failed the first time:
     # sklearn refused the NaN three hours in, after the object had already been written.
+    import scipy.sparse as sp
+    idx = np.flatnonzero(keep)
     wide_results = []
     for r in results:
         w = dict(r)
+        # A graph is over the cells that were FITTED. Expanded to full size, the withheld cells
+        # become isolated vertices - no edges at all - which is the truthful representation: the
+        # corrected graph has nothing to say about a cell it never saw.
+        ad_ = r.get("adata")
+        if ad_ is not None and getattr(ad_, "obsp", None):
+            g = {}
+            for slot in ("connectivities", "distances"):
+                if slot in ad_.obsp:
+                    sub = sp.coo_matrix(ad_.obsp[slot])
+                    g[slot] = sp.csr_matrix(
+                        (sub.data, (idx[sub.row], idx[sub.col])), shape=(n, n))
+            if g:
+                w["graph"] = g
         for k in ("emb", "umap"):
             v = r.get(k)
             if v is None:

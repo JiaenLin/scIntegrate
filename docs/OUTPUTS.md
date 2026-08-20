@@ -113,3 +113,21 @@ could not run is a cell containing the word `absent` and its reason.
 
 An empty cell reads as a zero. A batch score of zero and a batch score that does not exist lead to
 opposite decisions, so they must not look alike.
+
+## A graph method's result is its graph
+
+```
+obsp['bbknn_connectivities']   the corrected neighbour graph — THIS is BBKNN's result
+obsp['bbknn_distances']
+```
+
+An `embed` method hands back coordinates and they land in `obsm`. A `graph` method hands back a
+neighbour graph and there is no corrected coordinate space to store — so without `obsp` the object
+carried only `X_umap_bbknn`, which is two dimensions of a nonlinear layout, and is exactly what
+this tool refuses to score BBKNN on. Anyone wanting to cluster on the correction could not.
+
+Where cells were withheld from the fit with `--drop-labels`, the graph is expanded to the full
+object and the withheld cells become **isolated vertices** — no edges at all. That is the truthful
+representation: a corrected graph has nothing to say about a cell it never saw. It is not the same
+as a cell with zero-weight neighbours, and a consumer that treats an isolated vertex as a
+zero-similarity one will get a different answer.

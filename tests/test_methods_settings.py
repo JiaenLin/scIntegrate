@@ -133,6 +133,24 @@ def test_withheld_padding_is_a_copy():
     check("emit gets the padded copy", "emit.build(A_out, results_wide" in src)
 
 
+def test_graph_method_ships_its_graph():
+    """A graph method's result is its GRAPH, and it has to be in the object.
+
+    The delivered object carried X_umap_bbknn and nothing else for BBKNN: two dimensions of a
+    nonlinear layout, which is exactly what this tool refuses to score it on, and which no
+    downstream clustering can use. obsp was empty. A reader who wanted the correction could not
+    have it.
+    """
+    print("\ngraph methods")
+    e = _code(ROOT / "scintegrate" / "emit.py")
+    c = _code(ROOT / "scintegrate" / "cli.py")
+    check("emit writes obsp", "out.obsp[" in e)
+    check("uns lists the graphs", '"graphs"' in e)
+    check("the graph is expanded when cells were withheld", 'w["graph"] = g' in c)
+    check("and carried through when none were", 'r["graph"] = {s: ad_.obsp[s]' in c)
+    check("isolated vertices, not dropped rows", "shape=(n, n)" in c)
+
+
 def main():
     m = _code(ROOT / "scintegrate" / "methods.py")
     f = _code(ROOT / "scintegrate" / "figures.py")
@@ -189,6 +207,7 @@ def main():
     test_no_project_data()
     test_figure_defects()
     test_withheld_padding_is_a_copy()
+    test_graph_method_ships_its_graph()
     test_report_fields_exist_in_payload()
 
     print()

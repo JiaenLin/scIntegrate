@@ -121,6 +121,15 @@ def build(source, results, obs_keep, *, chosen=None, benchmark=None, assessment=
             out.obsm[f"X_{m}"] = np.asarray(r["emb"], dtype="float32")
         if r.get("umap") is not None:
             out.obsm[f"X_umap_{m}"] = np.asarray(r["umap"], dtype="float32")
+        # A GRAPH METHOD'S RESULT IS ITS GRAPH. Without this the object carried only a UMAP for
+        # BBKNN - two dimensions of a nonlinear layout, which is exactly what this tool refuses to
+        # score it on, and which no downstream clustering can use. A reader who wanted the
+        # correction could not have it.
+        g = r.get("graph")
+        if g is not None:
+            for slot, mat in g.items():
+                if mat is not None:
+                    out.obsp[f"{m}_{slot}"] = mat
 
     # the chosen view under the name every plotting call reaches for by default
     if chosen and f"X_umap_{chosen}" in out.obsm:
@@ -141,6 +150,8 @@ def _uns(results, chosen, benchmark, assessment, constraint, provenance):
         "default_method": chosen or "none chosen",
         "embeddings": {f"X_{r['method']}": r.get("note", "") for r in results
                        if r.get("emb") is not None},
+        "graphs": {f"{r['method']}_connectivities": r.get("note", "") for r in results
+                   if r.get("graph")},
         "uncorrected_baseline": "X_pca",
         "X_is": "log1p of library-size-normalised counts, normalised over all samples together",
         "counts_layer": "layers['counts'] - raw integer counts, what the count models read",
