@@ -132,3 +132,38 @@ neighbourhood size from the other rows.
 Every method adds a column to each panel figure, all at one shared scale. Five methods produce wide
 figures. They scroll rather than shrink, because rescaling per panel is the single easiest way to
 mislead with this figure — a dispersed method drawn to fit looks compact.
+
+## Harmony's embedding is not reproducible between executions — OPEN, measured 2026-09-06
+
+Two runs of this tool over a bit-identical input, with identical recorded settings (50 PCs,
+`max_iter_harmony=20`, `random_state=0`, theta and sigma at harmonypy's defaults), produced
+`X_harmony` differing by **0.060** on a scale of 16.7, moving the scIB total from 0.6868 to
+0.6739 — all of it in the biological half, with batch mixing unchanged. Every other method
+reproduced: `X_none` at 0.00e+00, bbknn and scANVI exactly, scVI within 0.0002.
+
+**It is not the seed and not this tool.** With scIntegrate removed from the picture and
+harmonypy called directly on the embedding the runs gave it:
+
+| measurement | result |
+|---|---|
+| two calls in one process, 24 threads | 1.6e-12 |
+| two calls in one process, single-threaded | 0.0e+00 |
+| the same call after importing torch first | 2.2e-12 |
+| **the same call on two different nodes** | **0.214** |
+
+harmonypy 0.0.10 calls `np.random.seed(random_state)` inside `run_harmony` (`harmony.py:125`)
+and hands an integer seed to sklearn's KMeans, so the algorithm's choices are fixed. What varies
+is the floating-point arithmetic between independent executions on different machines — both of
+which report the same CPU model — amplified through k-means assignments over twenty iterations.
+
+**What this costs a reader.** In the run that chose the default embedding, `scanvi` led `harmony`
+by 0.0335 and `harmony` led `scvi` by 0.0176. Harmony's own execution-to-execution movement is
+~0.013 in scIB total. So the first place is robust to it and **the second is not**: in the second
+run harmony scored 0.6739 against scvi's 0.6690, a gap of 0.005, where the first had them 0.018
+apart. Any statement of the form *harmony is the second-best method here* is inside the noise of
+running it twice.
+
+**What would close it.** Nothing in this tool: the instability is harmonypy's arithmetic, not its
+seed. What this tool can do is stop presenting a rank whose gaps are smaller than the method's
+own reproducibility — report the spread beside the ranking, measured by running the fit twice —
+and declare in the run's own record which outputs are execution-stable and which are not.
