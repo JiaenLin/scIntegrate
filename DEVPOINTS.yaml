@@ -1,10 +1,13 @@
 # What can be added to scIntegrate. Read by `sch dev map`; see the harness's sch/dev/points.py.
 tool: scintegrate
 devpoints: 1
-terms: docs/forbidden_terms.txt
+# The word list this repository must not contain lives OUTSIDE it, in the project that owns
+# the cohort: $SCINTEGRATE_FORBIDDEN_TERMS, the convention tests/test_portability.py already uses.
+# A tool that ships the vocabulary in order to check that it does not ship the vocabulary
+# has shipped it.
 
 tests:
-  command: ["{python}", "-m", "pytest", "-q", "tests"]
+  command: ["{python}", "tests/run_all.py"]
 
 # `none` is always included: it is the baseline every method is measured against, and a fixture
 # run that omits it would score a method against nothing. One method plus the baseline keeps the
