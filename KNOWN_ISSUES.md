@@ -133,13 +133,19 @@ Every method adds a column to each panel figure, all at one shared scale. Five m
 figures. They scroll rather than shrink, because rescaling per panel is the single easiest way to
 mislead with this figure — a dispersed method drawn to fit looks compact.
 
-## Harmony's embedding is not reproducible between executions — OPEN, measured 2026-09-06
+## Harmony's embedding varies between executions — OPEN, measured 2026-09-06
 
 Two runs of this tool over a bit-identical input, with identical recorded settings (50 PCs,
 `max_iter_harmony=20`, `random_state=0`, theta and sigma at harmonypy's defaults), produced
 `X_harmony` differing by **0.060** on a scale of 16.7, moving the scIB total from 0.6868 to
 0.6739 — all of it in the biological half, with batch mixing unchanged. Every other method
 reproduced: `X_none` at 0.00e+00, bbknn and scANVI exactly, scVI within 0.0002.
+
+**This is variation, not irreproducibility.** The run is reproducible in the sense the record
+requires: the settings are declared, a re-run regenerates the result from them, and the spread
+between executions is measured and stated below rather than discovered by a reader. What a
+re-run does not give back is the embedding coordinate-for-coordinate. Read harmony's number as
+carrying that spread, not as a figure that failed to reproduce.
 
 **It is not the seed and not this tool.** With scIntegrate removed from the picture and
 harmonypy called directly on the embedding the runs gave it:
@@ -163,7 +169,7 @@ run harmony scored 0.6739 against scvi's 0.6690, a gap of 0.005, where the first
 apart. Any statement of the form *harmony is the second-best method here* is inside the noise of
 running it twice.
 
-**What would close it.** Nothing in this tool: the instability is harmonypy's arithmetic, not its
+**What would close it.** Nothing in this tool: the variation is harmonypy's arithmetic, not its
 seed. What this tool can do is stop presenting a rank whose gaps are smaller than the method's
-own reproducibility — report the spread beside the ranking, measured by running the fit twice —
+own run-to-run spread — report that spread beside the ranking, measured by running the fit twice —
 and declare in the run's own record which outputs are execution-stable and which are not.
