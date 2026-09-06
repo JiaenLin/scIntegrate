@@ -48,8 +48,9 @@ def test_no_project_data():
     import re
     print("\nno dataset-specific content")
     bad = []
-    pat = re.compile(r"cardiomyo|matrifibro|endocardial|pericyte|celescope|cellbender"
-                     r"|\bsambo\b|wangyb|duke-nus", re.I)
+    # Cell types and upstream tools of the study this was built against. Site and cohort NAMES
+    # are not spelled here: tests/test_portability.py loads them from a file outside the repo.
+    pat = re.compile(r"cardiomyo|matrifibro|endocardial|pericyte|celescope|cellbender", re.I)
     for f in list(ROOT.glob("docs/*.md")) + list(ROOT.glob("*.md")) \
             + list(ROOT.glob("scintegrate/*.py")):
         for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
@@ -176,7 +177,8 @@ def main():
     check("methods.py records that it uses labels", "USES_LABELS" in m)
     check("benchmark declares which methods are supervised", "LABEL_SUPERVISED" in b)
     check("a caveat is produced for the report", "def supervision_caveat" in b)
-    check("scanvi is in the supervised list", re.search(r'LABEL_SUPERVISED\s*=\s*\("scanvi"', b)
+    from scintegrate import benchmark as _B
+    check("scanvi is in the supervised list, derived from methods.SEES", "scanvi" in _B.LABEL_SUPERVISED
           is not None)
     check("scvi is NOT in it (it never sees labels)",
           not re.search(r'LABEL_SUPERVISED\s*=\s*\([^)]*"scvi"[,)]', b))

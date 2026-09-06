@@ -45,10 +45,10 @@ The factors your study is about are usually not in an annotated object — it ca
 not the animal metadata. A CSV keyed on the batch:
 
 ```csv
-sample,age,diet,chemistry,batch
-s1,young,chow,v3,A
-s2,aged,chow,v3,A
-s3,young,HFD,v3.1,B
+sample,treatment,timepoint,chemistry,batch
+s1,control,d0,v3,A
+s2,treated,d0,v3,A
+s3,control,d7,v3.1,B
 ```
 
 Every column travels into the delivered object. Only the ones you name with `--bio-factor` drive the

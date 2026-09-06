@@ -117,15 +117,31 @@ rather than the nullable-string groups newer anndata writes by default and most 
 cannot open. A `README.md` is written beside the object by inspecting the directory, so it
 describes what is there rather than what the run intended.
 
+## What a run leaves behind
+
+Four states are distinguishable from the filesystem alone, by a reader who did not watch the run:
+
+| file | written | says |
+|---|---|---|
+| `STATUS.json` | first as `partial`, last with the outcome | `ok` · `partial` (it died) · `refused` with a `fix` · `failed`; the commit read from `.git` by file, the job, the products on disk, `sees` per method, the wrapped package versions |
+| `RUNNING.txt` | at start | replaced at exit by one of the two below |
+| `SEALED.txt` | exit 0 **and** every expected product present | the object, the tables and `report.json` |
+| `FAILED.txt` | anything else | names what is missing |
+
+`scintegrate describe` prints the declaration — needs, provides, what each method was shown
+(`sees`: only scANVI sees the labels), gates, `cannot_show`, `state_version` — as JSON. Every
+ranking table and `report.json` carry `sees` beside each method, because a method trained on the
+label column is not sitting the same exam as one that was not.
+
 ## The design table
 
 Study factors arrive as a CSV keyed on the batch:
 
 ```csv
-sample,age,diet,chemistry
-s1,young,chow,v3
-s2,aged,chow,v3
-s3,young,HFD,v3.1
+sample,treatment,timepoint,chemistry
+s1,control,d0,v3
+s2,treated,d0,v3
+s3,control,d7,v3.1
 ```
 
 A batch present in the object with no row in the table is refused by name. Nothing is derived by

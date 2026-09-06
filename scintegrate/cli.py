@@ -17,6 +17,21 @@ import sys
 from pathlib import Path
 
 REFUSE = 2
+STATE_VERSION = 1      # the numbers, versioned: bump when the same inputs would give a different object
+
+CANNOT_SHOW = [
+    "A ranking on the scIB total is a ranking on chosen weights over chosen metrics; a different "
+    "w_bio can reorder it, and the alternative rankings are printed for that reason.",
+    "A method that was shown the label column is scored on that column; its biological-conservation "
+    "metrics do not measure the same thing as an unsupervised method's, and the ranking is not "
+    "like-for-like. The disclosure travels with the winner.",
+    "An embedding says nothing about composition or abundance across the factors it was corrected "
+    "for; a factor aliased with the batch key is removed by construction, not measured.",
+    "Cells withheld from the integration carry NaN in every embedding; any count over an embedding "
+    "excludes them, and any share is over the cells that remained.",
+    "Absent is not zero: a metric a method's kind cannot support is reported absent, and a total "
+    "over fewer metrics is not comparable to one over more.",
+]
 
 
 # --------------------------------------------------------------------------------- shared load
@@ -392,11 +407,20 @@ def _integrate(a):
         print(f"  scIB clustering grid: {len(_res)} resolutions {_res}")
     sent = tuple(D["sentinels"])
     results = []
+    failed_methods = {}
     for m in ok:
         print(f"\n=== {m} ===", flush=True)
-        r = ME.run(A, m, a.batch_key, label_key=a.label_key, unlabeled=sent, hvg=D["hvg"],
-                   n_latent=a.n_latent, n_pcs=a.n_pcs, seed=a.seed, max_epochs=a.max_epochs,
-                   scanvi_max_epochs=getattr(a, "scanvi_max_epochs", None))
+        try:
+            r = ME.run(A, m, a.batch_key, label_key=a.label_key, unlabeled=sent, hvg=D["hvg"],
+                       n_latent=a.n_latent, n_pcs=a.n_pcs, seed=a.seed, max_epochs=a.max_epochs,
+                       scanvi_max_epochs=getattr(a, "scanvi_max_epochs", None))
+        except Exception as _e:                                        # noqa: BLE001
+            # ONE METHOD FAILING DOES NOT DISCARD THE OTHERS. Under the single-job rule on a
+            # GPU queue, every method trains in this process; a crash in the fourth used to
+            # throw away the three already trained. It is recorded beside the absent ones.
+            failed_methods[m] = f"failed: {type(_e).__name__}: {str(_e)[:200]}"
+            print(f"  {m}: FAILED - {failed_methods[m]}", file=sys.stderr)
+            continue
         r["method"] = m
         print(f"    {r['note']}")
         results.append(r)
@@ -585,9 +609,9 @@ def _integrate(a):
     _csv(out / "tables" / "scib_absent.csv", ["method", "metric", "why"],
          [[r["method"], k, why] for r in results for k, why in r["aggregate"]["absent"].items()])
     _csv(out / "tables" / "scib_aggregate.csv",
-         ["method", "kind", "bio", "batch", "total", "w_bio", "n_bio", "of_bio",
+         ["method", "kind", "sees_labels", "bio", "batch", "total", "w_bio", "n_bio", "of_bio",
           "n_batch", "of_batch", "is_default"],
-         [[r["method"], r["kind"],
+         [[r["method"], r["kind"], "YES" if "labels" in ME.sees(r["method"]) else "no",
            "" if r["aggregate"]["bio"] is None else f"{r['aggregate']['bio']:.6f}",
            "" if r["aggregate"]["batch"] is None else f"{r['aggregate']['batch']:.6f}",
            "" if r["aggregate"]["total"] is None else f"{r['aggregate']['total']:.6f}",
@@ -605,7 +629,13 @@ def _integrate(a):
     # ---- the object
     print("\nwriting the deliverable", flush=True)
     obs_keep = obs_keep_early
-    prov = {"tool": "scintegrate", "input": str(a.h5ad), "umap_min_dist": a.min_dist,
+    from . import __version__, env as ENV, status as ST
+    prov = {"tool": "scintegrate", "version": __version__, "commit": ST.commit(),
+            "state_version": STATE_VERSION, "argv": list(sys.argv), "python": sys.version.split()[0],
+            "job": ST.job(),
+            "wrapped_versions": {p_: v_ for c_ in ENV.probe().values() for p_, v_ in c_["have"].items() if v_},
+            "sees": {m_: ME.sees(m_) for m_ in ok},
+            "input": str(a.h5ad), "umap_min_dist": a.min_dist,
             "batch_key": a.batch_key,
             "label_key": a.label_key, "l1_key": a.l1_key or "", "seed": a.seed,
             "k": a.k, "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
@@ -616,6 +646,7 @@ def _integrate(a):
             "design": D["design_note"], "sentinels": D["sentinels"],
             "scib_metrics_computed_on": int(real.sum()),
             "scib_metrics_excluded_sentinels": n_drop}
+    missing = {**missing, **failed_methods}
     chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
     if chosen["supervision_caveat"]:
         print("\n  ! " + chosen["supervision_caveat"])
@@ -656,6 +687,7 @@ def _integrate(a):
                "design": D["design_note"], "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "counts": D["counts_note"],
                "methods": [{"method": r["method"], "kind": r["kind"], "note": r["note"],
+                            "sees": ME.sees(r["method"]),
                             "metrics": {k: v["value"] for k, v in r["metrics"].items()},
                             "absent": r["aggregate"]["absent"],
                             "aggregate": {k: v for k, v in r["aggregate"].items()
@@ -855,6 +887,16 @@ def _score(a):
               f"cells excluded from the METRICS only")
     obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
 
+    # Cells withheld from the integration carry NaN in every embedding (`--drop-labels`); they
+    # are excluded from the metrics exactly as sentinel cells are, and counted.
+    _nan = np.zeros(A.n_obs, dtype=bool)
+    for m in order:
+        _nan |= np.isnan(np.asarray(A.obsm[stored[m]], dtype="float64")).any(axis=1)
+    if _nan.any():
+        print(f"  {int(_nan.sum()):,} cells carry NaN embeddings (withheld from the integration); "
+              f"excluded from the METRICS only")
+        real = real & ~_nan
+        obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
     results, A_pre = [], None
     for m in order:
         print(f"  {m} ...", flush=True)
@@ -905,9 +947,9 @@ def _score(a):
     _csv(out / "tables" / "scib_absent.csv", ["method", "metric", "why"],
          [[r["method"], k, why] for r in results for k, why in r["aggregate"]["absent"].items()])
     _csv(out / "tables" / "scib_aggregate.csv",
-         ["method", "kind", "bio", "batch", "total", "w_bio", "n_bio", "of_bio",
+         ["method", "kind", "sees_labels", "bio", "batch", "total", "w_bio", "n_bio", "of_bio",
           "n_batch", "of_batch", "is_default"],
-         [[r["method"], r["kind"],
+         [[r["method"], r["kind"], "YES" if "labels" in ME.sees(r["method"]) else "no",
            "" if r["aggregate"]["bio"] is None else f"{r['aggregate']['bio']:.6f}",
            "" if r["aggregate"]["batch"] is None else f"{r['aggregate']['batch']:.6f}",
            "" if r["aggregate"]["total"] is None else f"{r['aggregate']['total']:.6f}",
@@ -915,6 +957,26 @@ def _score(a):
            r["aggregate"]["n_batch"], r["aggregate"]["of_batch"],
            "YES" if r["method"] == chosen["default"] else ""] for r in results])
     print(f"\nrewrote {out}/tables/scib_*.csv")
+    # AND report.json, so `scintegrate report` rebuilds from the re-scored numbers rather than
+    # the stale ones. The docstring promised this; the code only wrote tables.
+    rp = out / "report.json"
+    if rp.exists():
+        try:
+            payload = json.loads(rp.read_text(encoding="utf-8"))
+            payload["chosen"] = chosen
+            by_m = {r["method"]: r for r in results}
+            for entry in payload.get("methods", []):
+                r = by_m.get(entry.get("method"))
+                if r:
+                    entry["metrics"] = {k: v["value"] for k, v in r["metrics"].items()}
+                    entry["absent"] = r["aggregate"]["absent"]
+                    entry["aggregate"] = {k: v for k, v in r["aggregate"].items() if k != "absent"}
+                    entry["sees"] = ME.sees(r["method"])
+            payload["rescored"] = True
+            rp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
+            print(f"      {rp} (chosen and metrics rewritten)")
+        except (OSError, ValueError) as e:
+            print(f"      report.json NOT rewritten: {e}", file=sys.stderr)
     print("Re-run `scintegrate report --out` to rebuild the document from these.")
     return 0
 
@@ -1068,11 +1130,78 @@ def main(argv=None):
     r.add_argument("--out", required=True, type=Path)
     r.set_defaults(fn=_report)
 
+    d = sub.add_parser("describe", help="what this tool declares: needs, provides, sees per method, "
+                                        "cannot_show, state_version (JSON)")
+    d.set_defaults(fn=_describe)
+
     a = ap.parse_args(argv)
     if not getattr(a, "fn", None):
         ap.print_help()
         return 0
-    return a.fn(a)
+    return _with_status(a, argv)
+
+
+# ----------------------------------------------------------------------------- the status contract
+
+def _describe(a):
+    """The tool's declaration, for a reader or a host that will not read the code."""
+    from . import __version__, methods as ME, status as ST
+    d = {"contract": "1.0", "profile": "single-cell/1.0", "name": "scintegrate",
+         "version": __version__, "commit": ST.commit(), "state_version": STATE_VERSION,
+         "class": "method", "layer": "stack", "reversible": True,
+         "summary": "compare integration methods on identical data against the un-integrated "
+                    "baseline, score them, and write every embedding into one object",
+         "needs": ["matrix/{lognorm}", "column/{batch}", "column/{label}"],
+         "optional": ["matrix/{counts}", "embedding/X_pca"],
+         "provides": [f"embedding/X_{m}" for m in ME.METHODS] + [f"embedding/X_umap_{m}" for m in ME.METHODS]
+                     + ["graph/*_connectivities", "table/scib_metrics", "table/scib_aggregate",
+                        "table/knn_metrics", "object/*"],
+         "sees": {m: ME.sees(m) for m in ME.METHODS},
+         "methods": {m: {"kind": ME.METHODS[m][1], "sees": ME.sees(m)} for m in ME.METHODS},
+         "baseline_first": "none",
+         "gates": {"confounding": "a factor aliased with the batch key vetoes any claim across it",
+                   "counts": "a method that models counts refuses a normalised matrix"},
+         "escapes": [{"what": "withholding labels from the integration", "how": "--drop-labels",
+                      "recorded": "report.json withheld_from_integration and tables/integration_withheld_by_arm.csv"}],
+         "cannot_show": CANNOT_SHOW,
+         "status_files": ["STATUS.json", "RUNNING.txt", "SEALED.txt", "FAILED.txt"],
+         "language": "python", "entry": "scintegrate.cli", "needs_env": True}
+    print(json.dumps(d, indent=1, sort_keys=True, default=str))
+    return 0
+
+
+def _with_status(a, argv):
+    """Run a command inside the status contract: STATUS.json partial first, the outcome last,
+    RUNNING replaced by SEALED or FAILED, and a crash sealed before it is re-raised."""
+    from . import __version__, methods as ME, status as ST
+    out = getattr(a, "out", None)
+    if a.cmd in ("describe", "report") or out is None:
+        return a.fn(a)
+    out = Path(out)
+    ST.begin(out, command=a.cmd, version=__version__, state_version=STATE_VERSION,
+             sees=sorted({x for m in ME.METHODS for x in ME.sees(m)}), cannot_show=CANNOT_SHOW,
+             argv=list(argv) if argv is not None else None)
+    expected = {"integrate": ["report.json", f"objects/{getattr(a, 'object_name', 'cohort_integrated.h5ad')}",
+                              "tables/scib_aggregate.csv"],
+                "assess": ["report.json"], "score": ["tables/scib_aggregate.csv"]}.get(a.cmd, [])
+    try:
+        rc = a.fn(a)
+    except BaseException as e:                                       # noqa: BLE001
+        ST.finish(out, status="failed", exit_code=1, headline=f"{type(e).__name__}: {str(e)[:200]}",
+                  expected=expected)
+        raise
+    if rc == REFUSE:
+        ST.finish(out, status="refused", exit_code=rc, headline="refused: see the message above",
+                  refusal={"reason": "refused before or during the run; the message names it",
+                           "fix": "change the input the refusal names, or the flag it asks for"})
+    else:
+        ST.finish(out, status="ok" if rc == 0 else "failed", exit_code=rc,
+                  headline={"integrate": "every method compared and the object written",
+                            "assess": "the question measured; nothing integrated",
+                            "score": "stored embeddings re-scored"}.get(a.cmd, "done"),
+                  expected=expected, inputs=[{"path": str(getattr(a, "h5ad", ""))}],
+                  sees={m: ME.sees(m) for m in ME.METHODS})
+    return rc
 
 
 if __name__ == "__main__":

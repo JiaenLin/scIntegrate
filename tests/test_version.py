@@ -34,6 +34,9 @@ check("pyproject does not ALSO hardcode one",
       not re.search(r'^version\s*=\s*"', pyproj, re.M))
 check("the version is a plain three-part number", re.fullmatch(r"\d+\.\d+\.\d+", vfile) is not None,
       vfile)
+cff = re.search(r"^version:\s*([\d.]+)", (ROOT / "CITATION.cff").read_text(), re.M)
+check("CITATION.cff carries the same version", cff is not None and cff.group(1) == vfile,
+      f"{cff.group(1) if cff else None} vs {vfile}")
 
 # every extra named in the install docs must exist as an extra, or the documented command fails
 block = pyproj.split("[project.optional-dependencies]")[1].split("\n[")[0]

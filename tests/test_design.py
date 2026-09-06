@@ -155,14 +155,14 @@ import scintegrate.metrics as _M                                                
 check("there is no ranking function in metrics - ranking happens once, in benchmark",
       not hasattr(_M, "composite") and not hasattr(_M, "recommend"))
 o_nested = pd.DataFrame({"sample": ["s1"] * 5 + ["s2"] * 5 + ["s3"] * 5 + ["s4"] * 5,
-                         "age": ["young"] * 10 + ["aged"] * 10,
-                         "diet": (["chow"] * 3 + ["HFD"] * 2) * 4})
-c = confounding(o_nested, "sample", ["age", "diet"])
-check("a factor constant within batch is NESTED", c["age"]["status"] == "nested")
-check("a factor varying within batch is SEPARABLE", c["diet"]["status"] == "separable")
-o_alias = pd.DataFrame({"sample": ["s1"] * 10 + ["s2"] * 10, "age": ["young"] * 10 + ["aged"] * 10})
+                         "factor_a": ["level1"] * 10 + ["level2"] * 10,
+                         "factor_b": (["x"] * 3 + ["y"] * 2) * 4})
+c = confounding(o_nested, "sample", ["factor_a", "factor_b"])
+check("a factor constant within batch is NESTED", c["factor_a"]["status"] == "nested")
+check("a factor varying within batch is SEPARABLE", c["factor_b"]["status"] == "separable")
+o_alias = pd.DataFrame({"sample": ["s1"] * 10 + ["s2"] * 10, "factor_a": ["level1"] * 10 + ["level2"] * 10})
 check("one-to-one with the batch key is ALIASED, the stronger case",
-      confounding(o_alias, "sample", ["age"])["age"]["status"] == "aliased")
+      confounding(o_alias, "sample", ["factor_a"])["factor_a"]["status"] == "aliased")
 check("an absent factor is reported, not crashed",
       confounding(o_nested, "sample", ["nope"])["nope"]["status"] == "absent")
 check("nesting is stated as a CONSTRAINT ON USE, not as a refusal to choose",

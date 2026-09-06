@@ -281,7 +281,7 @@ def aggregate(metrics, w_bio=0.6):
 #: Methods that are SHOWN the label column during training. Their biological-conservation
 #: metrics are computed on that same column, so those metrics are not measuring the same thing
 #: for them as for a method that never saw it.
-LABEL_SUPERVISED = ("scanvi",)
+from .methods import NEEDS_LABELS as LABEL_SUPERVISED  # noqa: E402 — declared once, in methods.SEES
 
 
 def supervision_caveat(ranked, label_key):

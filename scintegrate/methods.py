@@ -44,8 +44,17 @@ METHODS = {
 
 #: methods that model counts and must NOT be handed normalised values
 NEEDS_COUNTS = ("scvi", "scanvi")
-#: methods that read the annotation
-NEEDS_LABELS = ("scanvi",)
+
+#: What each method was SHOWN beyond the matrix and the batch key. An empty list is a positive
+#: claim, not an omission. This is the one place it is declared; the benchmark's supervision
+#: caveat and every ranking table read it from here, so the two cannot disagree.
+SEES = {"none": [], "harmony": [], "bbknn": [], "scvi": [], "scanvi": ["labels"]}
+#: methods that read the annotation — derived, never restated
+NEEDS_LABELS = tuple(m for m, s in SEES.items() if "labels" in s)
+
+
+def sees(name):
+    return list(SEES.get(name, []))
 
 
 def available(names):
@@ -65,9 +74,10 @@ def available(names):
             ok.append(n)
             continue
         try:
-            importlib.util.find_spec(pkg)
-            if importlib.util.find_spec(pkg) is None:
-                raise ImportError(pkg)
+            # IMPORT it, do not merely find it: a package that is present but broken (a torch
+            # whose CUDA build does not match the driver) passes find_spec and dies inside
+            # run(), after every cheaper method has already been trained.
+            importlib.import_module(pkg)
             ok.append(n)
         except ImportError:
             hint = "scvi-tools" if pkg == "scvi" else pkg
