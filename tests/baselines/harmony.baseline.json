@@ -26,26 +26,25 @@
  ],
  "measured_over": 2,
  "not_execution_stable": [
-  "SEALED.txt::bytes",
   "STATUS.json::products[17].bytes",
   "STATUS.json::products[1].bytes",
   "STATUS.json::products[2].bytes",
-  "figures/F1_1_label_cell_type_methods.pdf::bytes",
-  "figures/F2_batch_methods.pdf::bytes",
-  "figures/F4_highlight_methods.pdf::bytes",
-  "objects/cohort_integrated.h5ad::bytes",
-  "reports/integration.html::bytes"
+  "figures/F1_1_label_cell_type_methods.pdf::content",
+  "figures/F2_batch_methods.pdf::content",
+  "figures/F4_highlight_methods.pdf::content",
+  "objects/cohort_integrated.h5ad::content",
+  "reports/integration.html::size"
  ],
  "products": {
   "README.md": {
    "bytes": 5065,
    "kind": "opaque",
-   "sha256": "48f277b86e67937f"
+   "sha256": "045c48e4c4704edb"
   },
   "SEALED.txt": {
    "bytes": 664,
    "kind": "opaque",
-   "sha256": "7431963d6fe6841d"
+   "sha256": "6512e7a038eae779"
   },
   "STATUS.json": {
    "kind": "json",
@@ -59,6 +58,9 @@
     "products[14].bytes": 22883.0,
     "products[15].bytes": 75475.0,
     "products[16].bytes": 37299.0,
+    "products[17].bytes": 15706.0,
+    "products[1].bytes": 1948.0,
+    "products[2].bytes": 8021.0,
     "products[3].bytes": 213.0,
     "products[4].bytes": 636.0,
     "products[5].bytes": 127.0,
@@ -72,7 +74,7 @@
   "figures/F1_1_label_cell_type_methods.pdf": {
    "bytes": 21618,
    "kind": "opaque",
-   "sha256": "6f515ca723703eed"
+   "sha256": "03720fa9ba6461c1"
   },
   "figures/F1_1_label_cell_type_methods.png": {
    "bytes": 85784,
@@ -82,7 +84,7 @@
   "figures/F2_batch_methods.pdf": {
    "bytes": 39110,
    "kind": "opaque",
-   "sha256": "5572a83b77c40953"
+   "sha256": "733d0093aa358a7c"
   },
   "figures/F2_batch_methods.png": {
    "bytes": 97769,
@@ -92,7 +94,7 @@
   "figures/F4_highlight_methods.pdf": {
    "bytes": 22883,
    "kind": "opaque",
-   "sha256": "9cb9aa1a214fcad8"
+   "sha256": "19e84c7a3539d445"
   },
   "figures/F4_highlight_methods.png": {
    "bytes": 75475,
@@ -107,7 +109,7 @@
   "objects/cohort_integrated.h5ad": {
    "bytes": 13041712,
    "kind": "opaque",
-   "sha256": "abc89de15fd51576"
+   "sha256": "9a6a2d50ff49bbad"
   },
   "report.json": {
    "kind": "json",
@@ -212,7 +214,7 @@
   "reports/integration.html": {
    "bytes": 15706,
    "kind": "opaque",
-   "sha256": "24852e13bc1123a6"
+   "sha256": "835204162be14053"
   },
   "tables/celltype_batch_dominance.csv": {
    "header": [
