@@ -1,0 +1,494 @@
+{
+ "atol": 1e-12,
+ "baseline": 1,
+ "covers": [
+  "STATUS.json",
+  "report.json",
+  "tables/celltype_batch_dominance.csv",
+  "tables/celltype_batch_mixing.csv",
+  "tables/knn_metrics.csv",
+  "tables/scib_absent.csv",
+  "tables/scib_aggregate.csv",
+  "tables/scib_metrics.csv"
+ ],
+ "does_not_cover": [
+  "README.md",
+  "SEALED.txt",
+  "figures/F1_1_label_cell_type_methods.pdf",
+  "figures/F1_1_label_cell_type_methods.png",
+  "figures/F2_batch_methods.pdf",
+  "figures/F2_batch_methods.png",
+  "figures/F4_highlight_methods.pdf",
+  "figures/F4_highlight_methods.png",
+  "figures/F5_celltype_mixing.png",
+  "objects/cohort_integrated.h5ad",
+  "reports/integration.html"
+ ],
+ "measured_over": 2,
+ "not_execution_stable": [
+  "SEALED.txt::bytes",
+  "STATUS.json::products[17].bytes",
+  "STATUS.json::products[1].bytes",
+  "STATUS.json::products[2].bytes",
+  "figures/F1_1_label_cell_type_methods.pdf::bytes",
+  "figures/F2_batch_methods.pdf::bytes",
+  "figures/F4_highlight_methods.pdf::bytes",
+  "objects/cohort_integrated.h5ad::bytes",
+  "reports/integration.html::bytes"
+ ],
+ "products": {
+  "README.md": {
+   "bytes": 5065,
+   "kind": "opaque",
+   "sha256": "48f277b86e67937f"
+  },
+  "SEALED.txt": {
+   "bytes": 664,
+   "kind": "opaque",
+   "sha256": "7431963d6fe6841d"
+  },
+  "STATUS.json": {
+   "kind": "json",
+   "numbers": {
+    "exit": 0.0,
+    "products[0].bytes": 5065.0,
+    "products[10].bytes": 21618.0,
+    "products[11].bytes": 85784.0,
+    "products[12].bytes": 39110.0,
+    "products[13].bytes": 97769.0,
+    "products[14].bytes": 22883.0,
+    "products[15].bytes": 75475.0,
+    "products[16].bytes": 37299.0,
+    "products[3].bytes": 213.0,
+    "products[4].bytes": 636.0,
+    "products[5].bytes": 127.0,
+    "products[6].bytes": 201.0,
+    "products[7].bytes": 146.0,
+    "products[8].bytes": 215.0,
+    "products[9].bytes": 13041712.0,
+    "state_version": 1.0
+   }
+  },
+  "figures/F1_1_label_cell_type_methods.pdf": {
+   "bytes": 21618,
+   "kind": "opaque",
+   "sha256": "6f515ca723703eed"
+  },
+  "figures/F1_1_label_cell_type_methods.png": {
+   "bytes": 85784,
+   "kind": "opaque",
+   "sha256": "4f74bae617c1ad7a"
+  },
+  "figures/F2_batch_methods.pdf": {
+   "bytes": 39110,
+   "kind": "opaque",
+   "sha256": "5572a83b77c40953"
+  },
+  "figures/F2_batch_methods.png": {
+   "bytes": 97769,
+   "kind": "opaque",
+   "sha256": "1540b9890085e2c0"
+  },
+  "figures/F4_highlight_methods.pdf": {
+   "bytes": 22883,
+   "kind": "opaque",
+   "sha256": "9cb9aa1a214fcad8"
+  },
+  "figures/F4_highlight_methods.png": {
+   "bytes": 75475,
+   "kind": "opaque",
+   "sha256": "a5d8ebb3d6b5ec1c"
+  },
+  "figures/F5_celltype_mixing.png": {
+   "bytes": 37299,
+   "kind": "opaque",
+   "sha256": "cccbad77790d58ff"
+  },
+  "objects/cohort_integrated.h5ad": {
+   "bytes": 13041712,
+   "kind": "opaque",
+   "sha256": "abc89de15fd51576"
+  },
+  "report.json": {
+   "kind": "json",
+   "numbers": {
+    "celltypes[0].batch.expected": 0.7897894425816729,
+    "celltypes[0].batch.foreign": 0.7819593787335722,
+    "celltypes[0].batch.levels": 5.0,
+    "celltypes[0].batch.n": 279.0,
+    "celltypes[0].batch.ratio": 0.9900858843814047,
+    "celltypes[0].measured": "bool:True",
+    "celltypes[0].min_cells": 90.0,
+    "celltypes[0].n": 279.0,
+    "celltypes[1].batch.expected": 0.7912969109212312,
+    "celltypes[1].batch.foreign": 0.7975723622782447,
+    "celltypes[1].batch.levels": 6.0,
+    "celltypes[1].batch.n": 714.0,
+    "celltypes[1].batch.ratio": 1.0079305899851265,
+    "celltypes[1].measured": "bool:True",
+    "celltypes[1].min_cells": 90.0,
+    "celltypes[1].n": 714.0,
+    "celltypes[2].batch.expected": 0.791786061851211,
+    "celltypes[2].batch.foreign": 0.7933210784313726,
+    "celltypes[2].batch.levels": 6.0,
+    "celltypes[2].batch.n": 544.0,
+    "celltypes[2].batch.ratio": 1.0019386759304307,
+    "celltypes[2].measured": "bool:True",
+    "celltypes[2].min_cells": 90.0,
+    "celltypes[2].n": 544.0,
+    "celltypes[3].measured": "bool:False",
+    "celltypes[3].min_cells": 90.0,
+    "celltypes[3].n": 1.0,
+    "celltypes[4].batch.expected": 0.7940065474691513,
+    "celltypes[4].batch.foreign": 0.7944178628389156,
+    "celltypes[4].batch.levels": 6.0,
+    "celltypes[4].batch.n": 418.0,
+    "celltypes[4].batch.ratio": 1.0005180251612222,
+    "celltypes[4].measured": "bool:True",
+    "celltypes[4].min_cells": 90.0,
+    "celltypes[4].n": 418.0,
+    "celltypes[5].measured": "bool:False",
+    "celltypes[5].min_cells": 90.0,
+    "celltypes[5].n": 44.0,
+    "chosen.comparable": "bool:True",
+    "chosen.total": 0.71297945616806,
+    "dominance[0].n": 279.0,
+    "dominance[0].n_batches": 5.0,
+    "dominance[0].top_share": 0.25448028673835127,
+    "dominance[1].n": 714.0,
+    "dominance[1].n_batches": 6.0,
+    "dominance[1].top_share": 0.2647058823529412,
+    "dominance[2].n": 544.0,
+    "dominance[2].n_batches": 6.0,
+    "dominance[2].top_share": 0.25183823529411764,
+    "dominance[3].n": 1.0,
+    "dominance[3].n_batches": 1.0,
+    "dominance[3].top_share": 1.0,
+    "dominance[4].n": 418.0,
+    "dominance[4].n_batches": 6.0,
+    "dominance[4].top_share": 0.24641148325358853,
+    "dominance[5].n": 44.0,
+    "dominance[5].n_batches": 2.0,
+    "dominance[5].top_share": 0.75,
+    "k": 30.0,
+    "method_settings.none.n_pcs": 20.0,
+    "method_settings.none.pcs_available": 20.0,
+    "methods[0].aggregate.batch": 0.8169974734516741,
+    "methods[0].aggregate.bio": 0.6436341113123173,
+    "methods[0].aggregate.n_batch": 3.0,
+    "methods[0].aggregate.n_bio": 6.0,
+    "methods[0].aggregate.of_batch": 5.0,
+    "methods[0].aggregate.of_bio": 6.0,
+    "methods[0].aggregate.total": 0.71297945616806,
+    "methods[0].aggregate.w_bio": 0.6,
+    "methods[0].knn.foreign_expected": 0.7919165,
+    "methods[0].knn.foreign_mean": 0.7882333333333335,
+    "methods[0].knn.k": 30.0,
+    "methods[0].knn.knn_retained_mean": 1.0,
+    "methods[0].knn.label_coherence_mean": 0.97945,
+    "methods[0].knn.ratio_to_chance": 0.9953490466903183,
+    "methods[0].metrics.ari": 0.8963287250874761,
+    "methods[0].metrics.asw_batch": 0.8708769679069519,
+    "methods[0].metrics.asw_label": 0.5247312635183334,
+    "methods[0].metrics.clisi": 0.9987879218985345,
+    "methods[0].metrics.graph_connectivity": 1.0,
+    "methods[0].metrics.ilisi": 0.5801154524480703,
+    "methods[0].metrics.isolated_labels_asw": 0.5,
+    "methods[0].metrics.isolated_labels_f1": 0.014388489208633094,
+    "methods[0].metrics.nmi": 0.9275682681609269,
+    "n_cells": 2000.0,
+    "n_genes": 520.0,
+    "n_latent": 30.0,
+    "n_pcs": 50.0,
+    "seed": 0.0,
+    "summary.n_types_below": 0.0,
+    "summary.n_types_measured": 4.0,
+    "summary.threshold": 0.8,
+    "umap_min_dist": 0.2,
+    "umap_n_neighbors": 15.0,
+    "w_bio": 0.6
+   }
+  },
+  "reports/integration.html": {
+   "bytes": 15706,
+   "kind": "opaque",
+   "sha256": "24852e13bc1123a6"
+  },
+  "tables/celltype_batch_dominance.csv": {
+   "header": [
+    "label",
+    "n",
+    "n_batches",
+    "top_batch",
+    "top_share"
+   ],
+   "kind": "csv",
+   "numbers": {
+    "n": {
+     "max": 714.0,
+     "min": 1.0,
+     "n": 6,
+     "nan": 0,
+     "sum": 2000.0
+    },
+    "n_batches": {
+     "max": 6.0,
+     "min": 1.0,
+     "n": 6,
+     "nan": 0,
+     "sum": 26.0
+    },
+    "top_share": {
+     "max": 1.0,
+     "min": 0.2464,
+     "n": 6,
+     "nan": 0,
+     "sum": 2.7674
+    }
+   },
+   "rows": 6
+  },
+  "tables/celltype_batch_mixing.csv": {
+   "header": [
+    "label",
+    "n",
+    "status",
+    "foreign_mean",
+    "chance",
+    "ratio_to_chance",
+    "why_not"
+   ],
+   "kind": "csv",
+   "numbers": {
+    "n": {
+     "max": 714.0,
+     "min": 1.0,
+     "n": 6,
+     "nan": 0,
+     "sum": 2000.0
+    }
+   },
+   "rows": 6
+  },
+  "tables/knn_metrics.csv": {
+   "header": [
+    "method",
+    "kind",
+    "foreign_mean",
+    "chance",
+    "ratio_to_chance",
+    "knn_retained",
+    "label_coherence"
+   ],
+   "kind": "csv",
+   "numbers": {
+    "chance": {
+     "max": 0.791917,
+     "min": 0.791917,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.791917
+    },
+    "foreign_mean": {
+     "max": 0.788233,
+     "min": 0.788233,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.788233
+    },
+    "label_coherence": {
+     "max": 0.97945,
+     "min": 0.97945,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.97945
+    },
+    "ratio_to_chance": {
+     "max": 0.995349,
+     "min": 0.995349,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.995349
+    }
+   },
+   "rows": 1
+  },
+  "tables/scib_absent.csv": {
+   "header": [
+    "method",
+    "metric",
+    "why"
+   ],
+   "kind": "csv",
+   "numbers": {},
+   "rows": 2
+  },
+  "tables/scib_aggregate.csv": {
+   "header": [
+    "method",
+    "kind",
+    "sees_labels",
+    "bio",
+    "batch",
+    "total",
+    "w_bio",
+    "n_bio",
+    "of_bio",
+    "n_batch",
+    "of_batch",
+    "is_default"
+   ],
+   "kind": "csv",
+   "numbers": {
+    "batch": {
+     "max": 0.816997,
+     "min": 0.816997,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.816997
+    },
+    "bio": {
+     "max": 0.643634,
+     "min": 0.643634,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.643634
+    },
+    "n_batch": {
+     "max": 3.0,
+     "min": 3.0,
+     "n": 1,
+     "nan": 0,
+     "sum": 3.0
+    },
+    "n_bio": {
+     "max": 6.0,
+     "min": 6.0,
+     "n": 1,
+     "nan": 0,
+     "sum": 6.0
+    },
+    "of_batch": {
+     "max": 5.0,
+     "min": 5.0,
+     "n": 1,
+     "nan": 0,
+     "sum": 5.0
+    },
+    "of_bio": {
+     "max": 6.0,
+     "min": 6.0,
+     "n": 1,
+     "nan": 0,
+     "sum": 6.0
+    },
+    "total": {
+     "max": 0.712979,
+     "min": 0.712979,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.712979
+    },
+    "w_bio": {
+     "max": 0.6,
+     "min": 0.6,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.6
+    }
+   },
+   "rows": 1
+  },
+  "tables/scib_metrics.csv": {
+   "header": [
+    "method",
+    "kind",
+    "ari",
+    "asw_batch",
+    "asw_label",
+    "clisi",
+    "graph_connectivity",
+    "ilisi",
+    "isolated_labels_asw",
+    "isolated_labels_f1",
+    "kbet",
+    "nmi",
+    "pcr"
+   ],
+   "kind": "csv",
+   "numbers": {
+    "ari": {
+     "max": 0.896329,
+     "min": 0.896329,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.896329
+    },
+    "asw_batch": {
+     "max": 0.870877,
+     "min": 0.870877,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.870877
+    },
+    "asw_label": {
+     "max": 0.524731,
+     "min": 0.524731,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.524731
+    },
+    "clisi": {
+     "max": 0.998788,
+     "min": 0.998788,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.998788
+    },
+    "graph_connectivity": {
+     "max": 1.0,
+     "min": 1.0,
+     "n": 1,
+     "nan": 0,
+     "sum": 1.0
+    },
+    "ilisi": {
+     "max": 0.580115,
+     "min": 0.580115,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.580115
+    },
+    "isolated_labels_asw": {
+     "max": 0.5,
+     "min": 0.5,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.5
+    },
+    "isolated_labels_f1": {
+     "max": 0.014388,
+     "min": 0.014388,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.014388
+    },
+    "nmi": {
+     "max": 0.927568,
+     "min": 0.927568,
+     "n": 1,
+     "nan": 0,
+     "sum": 0.927568
+    }
+   },
+   "rows": 1
+  }
+ },
+ "recorded_on": {
+  "host_id": "28ae67926b93",
+  "machine": "x86_64",
+  "platform": "Linux-5.14.0-611.5.1.el9_7.x86_64-x86_64-with-glibc2.34",
+  "python": "3.12.12"
+ },
+ "rtol": 1e-09
+}
