@@ -7,7 +7,10 @@ devpoints: 1
 # has shipped it.
 
 tests:
-  command: ["{python}", "tests/run_all.py"]
+  # `--jobs {jobs}` is filled from the scheduler's allocation, or the CPU count off a
+  # scheduler. One subprocess per suite either way; only the waiting is removed. Measured
+  # IDENTICAL to the serial report on this suite set (PBS 707231) before being turned on.
+  command: ["{python}", "tests/run_all.py", "--jobs", "{jobs}"]
 
 # `none` is always included: it is the baseline every method is measured against, and a fixture
 # run that omits it would score a method against nothing. One method plus the baseline keeps the
