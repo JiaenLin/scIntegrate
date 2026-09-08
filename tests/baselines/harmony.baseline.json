@@ -1,6 +1,6 @@
 {
  "atol": 1e-12,
- "baseline": 1,
+ "baseline": 2,
  "covers": [
   "STATUS.json",
   "report.json",
@@ -12,8 +12,17 @@
   "tables/scib_metrics.csv"
  ],
  "does_not_cover": [
+  "objects/cohort_integrated.h5ad"
+ ],
+ "measured_over": 2,
+ "not_execution_stable": [
+  "STATUS.json::products[17].bytes",
+  "STATUS.json::products[1].bytes",
+  "STATUS.json::products[2].bytes",
+  "objects/cohort_integrated.h5ad::content"
+ ],
+ "presence_only": [
   "README.md",
-  "SEALED.txt",
   "figures/F1_1_label_cell_type_methods.pdf",
   "figures/F1_1_label_cell_type_methods.png",
   "figures/F2_batch_methods.pdf",
@@ -21,30 +30,12 @@
   "figures/F4_highlight_methods.pdf",
   "figures/F4_highlight_methods.png",
   "figures/F5_celltype_mixing.png",
-  "objects/cohort_integrated.h5ad",
   "reports/integration.html"
- ],
- "measured_over": 2,
- "not_execution_stable": [
-  "STATUS.json::products[17].bytes",
-  "STATUS.json::products[1].bytes",
-  "STATUS.json::products[2].bytes",
-  "figures/F1_1_label_cell_type_methods.pdf::content",
-  "figures/F2_batch_methods.pdf::content",
-  "figures/F4_highlight_methods.pdf::content",
-  "objects/cohort_integrated.h5ad::content",
-  "reports/integration.html::size"
  ],
  "products": {
   "README.md": {
    "bytes": 5065,
-   "kind": "opaque",
-   "sha256": "045c48e4c4704edb"
-  },
-  "SEALED.txt": {
-   "bytes": 664,
-   "kind": "opaque",
-   "sha256": "6512e7a038eae779"
+   "kind": "rendering"
   },
   "STATUS.json": {
    "kind": "json",
@@ -73,43 +64,36 @@
   },
   "figures/F1_1_label_cell_type_methods.pdf": {
    "bytes": 21618,
-   "kind": "opaque",
-   "sha256": "03720fa9ba6461c1"
+   "kind": "rendering"
   },
   "figures/F1_1_label_cell_type_methods.png": {
    "bytes": 85784,
-   "kind": "opaque",
-   "sha256": "4f74bae617c1ad7a"
+   "kind": "rendering"
   },
   "figures/F2_batch_methods.pdf": {
    "bytes": 39110,
-   "kind": "opaque",
-   "sha256": "733d0093aa358a7c"
+   "kind": "rendering"
   },
   "figures/F2_batch_methods.png": {
    "bytes": 97769,
-   "kind": "opaque",
-   "sha256": "1540b9890085e2c0"
+   "kind": "rendering"
   },
   "figures/F4_highlight_methods.pdf": {
    "bytes": 22883,
-   "kind": "opaque",
-   "sha256": "19e84c7a3539d445"
+   "kind": "rendering"
   },
   "figures/F4_highlight_methods.png": {
    "bytes": 75475,
-   "kind": "opaque",
-   "sha256": "a5d8ebb3d6b5ec1c"
+   "kind": "rendering"
   },
   "figures/F5_celltype_mixing.png": {
    "bytes": 37299,
-   "kind": "opaque",
-   "sha256": "cccbad77790d58ff"
+   "kind": "rendering"
   },
   "objects/cohort_integrated.h5ad": {
    "bytes": 13041712,
    "kind": "opaque",
-   "sha256": "9a6a2d50ff49bbad"
+   "sha256": "e6821bf31fbbdd19"
   },
   "report.json": {
    "kind": "json",
@@ -213,8 +197,7 @@
   },
   "reports/integration.html": {
    "bytes": 15706,
-   "kind": "opaque",
-   "sha256": "835204162be14053"
+   "kind": "rendering"
   },
   "tables/celltype_batch_dominance.csv": {
    "header": [
