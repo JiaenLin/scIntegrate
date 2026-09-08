@@ -32,7 +32,13 @@ points:
     register:
       - {file: scintegrate/methods.py, table: METHODS}
       - {file: scintegrate/methods.py, table: SEES}
-    must_declare: [SEES entry, state_version, wrapped version in provenance]
+    # PROSE, DELIBERATELY. A bare key name in this list is checked against the artefact at
+    # `lives`; a sentence is printed for a person. `state_version` was written here as a bare
+    # name and is NOT a key in methods.py - it lives in the run record - so as a checked key it
+    # was simply wrong.
+    must_declare: ["an entry in SEES saying what it sees",
+                   "a state_version in the run record it produces",
+                   "the wrapped library's version in provenance"]
     example: harmony
     tests: [tests/test_methods.py]
     proves: >
