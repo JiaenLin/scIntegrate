@@ -97,8 +97,10 @@ Omit all three to reproduce a published scIB benchmark exactly.
 
 **A walltime kill no longer costs you the models.** The object is written as soon as the embeddings
 exist, before scoring starts, and rewritten once the scores are there. If the job dies during
-scoring, run `scintegrate score --h5ad <that object>` and finish the benchmark in minutes; it
-writes the scores into `tables/` and `report.json` and leaves the object as it found it.
+scoring, run `scintegrate score --h5ad <that object>` and finish the benchmark in minutes. It
+writes the scores into `tables/scib_*.csv` and leaves the object as it found it. A run killed
+during scoring has no `report.json`, so `score` does not write one: the re-scored tables are the
+record.
 
 Find your queue's ceilings rather than guessing:
 

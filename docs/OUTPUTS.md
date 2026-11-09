@@ -70,9 +70,12 @@ nowhere near the cause.
 The object appears **before** the benchmark runs, carrying every embedding and a `uns` that says
 `"not scored yet"`. It is rewritten in place once the scores exist. If you find an object whose
 `uns['scintegrate']['benchmark']` says it was not scored, the run did not finish its metrics —
-`scintegrate score` computes them from it without retraining anything, into `tables/` and
-`report.json`. It does not rewrite the object, which is its input, so the object's `uns` keeps
-saying "not scored yet" and `report.json` records `object_rescored: false`.
+`scintegrate score` computes them from it without retraining anything. It always rewrites
+`tables/scib_*.csv`. It rewrites `report.json`, and rebuilds the HTML report and the README, only
+where the run directory already holds a `report.json`, and a run killed during scoring has none,
+so its re-scored tables are the record. It never rewrites the object, which is its input, so the
+object's `uns` keeps saying "not scored yet"; where a `report.json` is rewritten it records
+`object_rescored: false`.
 
 ## The tables
 
