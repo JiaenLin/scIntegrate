@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Harmony gives back the same embedding, and the same scIB numbers, every time it runs (GAP-C54).
 
-WHY THIS EXISTS. On one cohort, three runs at commits that did not touch harmony gave harmony
-clustering metrics (ARI, NMI, isolated-label F1) that moved by more than a tenth, while its
-silhouettes agreed to 1e-6 and the two methods that train nothing agreed on every metric but LISI.
+WHY THIS EXISTS. On one cohort, three runs at commits that did not touch harmony moved harmony's
+ARI by more than a tenth, and its NMI and isolated-label F1 with it, while its silhouettes agreed
+to 1e-6 and the two methods that train nothing agreed on every metric but LISI.
 The variation was in what is computed FROM harmony's embedding by discrete steps, and it began in
 the fit: harmony did not return the same bits twice.
 

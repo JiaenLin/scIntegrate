@@ -180,9 +180,9 @@ mislead with this figure — a dispersed method drawn to fit looks compact.
 
 **What it was.** Up to 0.4.x, two runs of one command over a bit-identical input did not give
 harmony the same `X_harmony`, and harmony's clustering metrics moved with it. On one cohort of
-about 10⁵ observations, three runs at commits that did not touch harmony moved its ARI, NMI and
-isolated-label F1 by more than a tenth, while its three silhouettes agreed to 1e-6 and `none` and
-`bbknn` agreed on every metric but LISI. Its rank among the methods moved with them.
+about 10⁵ observations, three runs at commits that did not touch harmony moved its ARI by more
+than a tenth, and its NMI and isolated-label F1 with it, while its three silhouettes agreed to
+1e-6 and `none` and `bbknn` agreed on every metric but LISI. Its rank among the methods moved too.
 
 **The cause, measured.** sklearn's KMeans, which harmonypy runs to place its first centroids, adds
 each OpenMP thread's partial sums under a lock, in the order the threads arrive
