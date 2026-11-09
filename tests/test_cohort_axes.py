@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """A human single-cell cohort through the real CLI, and the two axes it declares.
 
-WHY THIS EXISTS. scIntegrate was built against one cohort - mouse, single nuclei, one library per
-animal - and nothing in it had ever been run as anything else. It took no species and no assay,
-and it told every cohort that its design was "the ordinary structure of a design with one library
-per animal". The family's second cohort is human single cells (single-cell-harness ADR-0027).
+WHY THIS EXISTS. scIntegrate was built against one cohort, and nothing in it had ever been run as
+anything else. It took no species and no assay, and it told every cohort that its design was "the
+ordinary structure of a design with one library per animal" - a sentence about one study, printed
+for all of them. The family's next cohort is not that study (single-cell-harness ADR-0027).
 
 So this builds a small HUMAN SINGLE-CELL cohort - Ensembl ENSG identifiers in var, upper-case
 symbols, six libraries from six donors under two conditions, a population found in one library
