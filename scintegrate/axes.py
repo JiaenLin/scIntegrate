@@ -2,9 +2,9 @@
 
 WHY THIS EXISTS. scIntegrate took neither. A tool that is never told the species cannot notice
 that it was handed another cohort's object, and a run record that does not say what the cells
-were cannot be read by the stage after it. The family's second cohort was human single cells
-where the first was mouse nuclei, and every tool that took an axis without checking it would have
-run one as the other and said nothing (single-cell-harness ADR-0027).
+were cannot be read by the stage after it. Two cohorts can differ on both axes at once, and every
+tool that took an axis without checking it would have run one as the other and said nothing
+(single-cell-harness ADR-0027).
 
 SPECIES IS IN THE DATA, AND IS CHECKED. Ensembl gene identifiers name it outright (ENSG human,
 ENSMUSG mouse, ...). The rule is the harness's `axes` probe, restated here rather than imported,

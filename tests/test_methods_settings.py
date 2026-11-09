@@ -38,27 +38,6 @@ def _code(path):
     return "\n".join(out)
 
 
-def test_no_project_data():
-    """The repo is public. Nothing from any particular dataset belongs in it.
-
-    Checked because it happened: a worked example in QUICKSTART.md carried a real cell type and
-    a real cell count from the study the tool was being built against. Example output has to be
-    the SHAPE of a table, never a result.
-    """
-    import re
-    print("\nno dataset-specific content")
-    bad = []
-    # Cell types and upstream tools of the study this was built against. Site and cohort NAMES
-    # are not spelled here: tests/test_portability.py loads them from a file outside the repo.
-    pat = re.compile(r"cardiomyo|matrifibro|endocardial|pericyte|celescope|cellbender", re.I)
-    for f in list(ROOT.glob("docs/*.md")) + list(ROOT.glob("*.md")) \
-            + list(ROOT.glob("scintegrate/*.py")):
-        for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            if pat.search(ln):
-                bad.append(f"{f.name}:{i}")
-    check("no cell types or tools from a particular dataset", not bad, ", ".join(bad[:5]))
-
-
 def test_report_fields_exist_in_payload():
     """Anything the report renders must be in the dict report.json is built from.
 
@@ -206,7 +185,6 @@ def main():
           f.count("sc.tl.umap(") == f.count("min_dist=min_dist"),
           f"{f.count('sc.tl.umap(')} calls, {f.count('min_dist=min_dist')} set it")
 
-    test_no_project_data()
     test_figure_defects()
     test_withheld_padding_is_a_copy()
     test_graph_method_ships_its_graph()

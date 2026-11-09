@@ -191,13 +191,13 @@ check("all-mixed says integration is not indicated",
       "not indicated" in s_clean["indication"], s_clean["indication"][:60])
 s_conf = summarise([{"label": "a", "measured": True, "n": 999,
                      "batch": {"ratio": 0.2},
-                     "factors": {"age": {"ratio": 0.2}}}], 0.8)
+                     "factors": {"condition": {"ratio": 0.2}}}], 0.8)
 check("batch AND factor both unmixed is flagged as the same structure",
       s_conf["types_below_and_factor_also_unmixed"] == ["a"])
 check("and the wording says the contrast is removed with the batch",
       "same structure" in s_conf["indication"])
 s_only = summarise([{"label": "a", "measured": True, "n": 999,
-                     "batch": {"ratio": 0.2}, "factors": {"age": {"ratio": 1.0}}}], 0.8)
+                     "batch": {"ratio": 0.2}, "factors": {"condition": {"ratio": 1.0}}}], 0.8)
 check("batch-only unmixed is reported as separable",
       s_only["types_below_batch_only"] == ["a"] and not
       s_only["types_below_and_factor_also_unmixed"])

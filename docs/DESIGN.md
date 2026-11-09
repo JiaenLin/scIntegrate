@@ -38,10 +38,10 @@ where **1.00 is fully mixed**.
 
 Then it does the whole thing again with your biological factor in place of the library. **This is
 the comparison that matters.** If a cell type's libraries do not mix, that is batch structure. If
-its age groups also do not mix, in the same populations and to a similar degree, then the library
-structure and the biology are the same structure — and a correction on the library key removes the
-contrast the study exists to measure. Nothing measured after the correction can recover that
-distinction, because by then it is gone.
+its groups on that factor (its `condition` levels, say) also do not mix, in the same populations
+and to a similar degree, then the library structure and the biology are the same structure — and
+a correction on the library key removes the contrast the study exists to measure. Nothing
+measured after the correction can recover that distinction, because by then it is gone.
 
 ---
 

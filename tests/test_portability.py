@@ -21,6 +21,11 @@ the directories where such strings land last and are looked for least. Two kinds
      that this guard never spells the cohort or the site it guards against. Without the file the
      scan proves less, and says so rather than passing quietly.
 
+A second check once forbade one study's cell types by SPELLING them, in
+tests/test_methods_settings.py: the leak it guarded against, inside the guard (GAP-C21). It is
+gone. A cohort's words belong in its own list, read here, and the design examples are held to
+the repository's declared names by tests/test_examples_are_synthetic.py.
+
 This file exempts only itself. Stdlib only.
 """
 from __future__ import annotations

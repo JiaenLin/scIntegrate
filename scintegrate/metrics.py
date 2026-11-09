@@ -100,10 +100,11 @@ def confounding(obs, batch_key, bio_factors):
     """Is a biological factor NESTED inside the batch key?
 
     This is the question that decides whether a recommendation is safe to make, and no mixing
-    statistic can answer it. If every cell in a batch shares one value of `age`, then `age` is
-    constant within batch, and a method that removes between-batch variation removes the
-    age difference WITH it. The score will happily rank that method first: it mixed the batches,
-    which is exactly what it was asked to do and exactly what destroys the comparison.
+    statistic can answer it. If every cell in a `library` shares one value of `condition`, then
+    `condition` is constant within batch, and a method that removes between-batch variation
+    removes the difference between the conditions WITH it. The score will happily rank that method
+    first: it mixed the batches, which is exactly what it was asked to do and exactly what destroys
+    the comparison.
 
     Returns one entry per factor: nested (and therefore unrecoverable by any correction on this
     key), aliased (the factor and the batch key partition the cells identically), or separable.
