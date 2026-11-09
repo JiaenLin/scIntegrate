@@ -221,4 +221,7 @@ two runs of the real CLI.
 - **Earlier numbers.** A harmony number made before 0.5.0 is one draw of the threaded fit. A run
   at 0.5.0 is a fixed draw, which need not be close to it. Compare a re-run with a re-run.
 - **The cost.** One thread for the fit and no other step. Every other method, and all scoring,
-  keeps the threads it had.
+  keeps the threads it had. Measured on the workstation, 40,000 synthetic cells, free and held
+  fits interleaved: the same CPU time (17.0 s against 16.9 s, median of two) and 21 s against
+  25 s of wall time in the quieter round. There the BLAS could not be held (Accelerate), so a
+  node whose BLAS is threaded may lose more; that has not been measured.
