@@ -62,10 +62,10 @@ the cells it omits.
 ## 2. Ask whether integration is needed — before spending anything
 
 ```bash
-scintegrate assess --h5ad joint.h5ad --out results/03_integrate \
+scintegrate assess --h5ad joint.h5ad --out results/assess \
     --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
-    --design design.csv --bio-factor condition --bio-factor timepoint
+    --design design.csv --bio-factor treatment --bio-factor timepoint
 ```
 
 `--species` is required, and is checked against the gene identifiers in the object before anything
@@ -92,18 +92,22 @@ uncorrected embedding, and again for each declared factor:
 its own denominator. Read the two columns together — where **both** are low, the library structure
 and the biology are the same structure, and correcting the batch removes the contrast with it.
 
-Read `reports/assessment.html` and the figures before going on. This step is cheap precisely so the
-next one is a decision rather than a default.
+Read `results/assess/reports/assessment.html` and the figures before going on. This step is cheap
+precisely so the next one is a decision rather than a default.
 
 ## 3. Integrate, benchmark, and get one object
 
 ```bash
-scintegrate integrate --h5ad joint.h5ad --out results/03_integrate \
+scintegrate integrate --h5ad joint.h5ad --out results/integrate \
     --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
-    --design design.csv --bio-factor condition --bio-factor timepoint \
+    --design design.csv --bio-factor treatment --bio-factor timepoint \
     --methods none,harmony,bbknn,scvi,scanvi
 ```
+
+Its own `--out`, not the one `assess` wrote into. Each command writes its own `report.json`,
+`STATUS.json` and seal, and a shared directory leaves one command's record where the next one
+reads another's.
 
 `none` is always included and always first — it is the baseline every cost is measured against, and
 without it you can only learn which correction is strongest, never whether any was warranted.
@@ -115,7 +119,7 @@ without it you can only learn which correction is strongest, never whether any w
 Out comes one object:
 
 ```
-results/03_integrate/
+results/integrate/
   objects/cohort_integrated.h5ad    every embedding, plus the counts they came from
   reports/integration.html          START HERE
   tables/*.csv                      every number the report shows
@@ -128,7 +132,7 @@ results/03_integrate/
 
 ```python
 import scanpy as sc
-A = sc.read_h5ad("results/03_integrate/objects/cohort_integrated.h5ad")
+A = sc.read_h5ad("results/integrate/objects/cohort_integrated.h5ad")
 
 A.uns["scintegrate"]["default_embedding"]      # 'X_scanvi'
 A.uns["scintegrate"]["constraint_on_use"]      # read this before any claim
@@ -147,15 +151,16 @@ The metrics depend on things the models do not: a pandas version, a compiled LIS
 `rpy2` is installed. When one of those is fixed, you should not have to retrain scVI.
 
 ```bash
-scintegrate score --h5ad results/03_integrate/objects/cohort_integrated.h5ad \
-    --out results/03_integrate --species homo_sapiens --batch-key sample --label-key cell_type
+scintegrate score --h5ad results/integrate/objects/cohort_integrated.h5ad \
+    --out results/integrate --species homo_sapiens --batch-key sample --label-key cell_type
 ```
 
 It reads each method's embedding out of `obsm` and each graph method's corrected graph out of
-`obsp`, re-scores them, rewrites `tables/scib_*.csv` and the ranking in `report.json`, and rebuilds
-`reports/integration.html` and `README.md` from that. It does **not** rewrite the object, which is
-its input: the object's `uns['scintegrate']['benchmark']` keeps the scores of the run that wrote it,
-and `report.json` says so (`object_rescored: false`).
+`obsp`, re-scores them, rewrites `tables/scib_*.csv` and the ranking in the `report.json` that
+`integrate` wrote, and rebuilds `reports/integration.html` and `README.md` from that. A
+`report.json` written by another command is left exactly as it is. It does **not** rewrite the
+object, which is its input: the object's `uns['scintegrate']['benchmark']` keeps the scores of the
+run that wrote it, and `report.json` says so (`object_rescored: false`).
 
 This works because **the object is written before scoring starts**, so even a run killed at the
 walltime leaves its embeddings on disk.
@@ -163,7 +168,7 @@ walltime leaves its embeddings on disk.
 ## Rebuilding the document without recomputing
 
 ```bash
-scintegrate report --out results/03_integrate
+scintegrate report --out results/integrate
 ```
 
 Reads `report.json` and rewrites the HTML. Useful after editing prose or when a figure has been

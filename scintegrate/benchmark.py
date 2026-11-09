@@ -42,6 +42,18 @@ MEANING = {
     "pcr": "how much batch-explained variance the correction removed (batch)",
 }
 
+#: How far iLISI and cLISI move between two executions of one run under `--lisi-subsample`.
+#: scIB's compiled LISI helper draws the subsample from std::random_device (knn_graph.cpp,
+#: `random_device rd; mt19937 gen(rd())`), so no seed passed here reaches it and every execution
+#: scores different cells. MEASURED, not estimated: the largest movement of each, for the two
+#: methods that train nothing (none, bbknn), between two executions at --lisi-subsample 50, on
+#: one cohort of about 1e5 observations (2026-11-09). One measurement; a different cohort or
+#: percentage has its own spread. Without --lisi-subsample scIB scores every observation and
+#: draws no subsample, so this does not apply. Stated beside the totals in the report, and in
+#: KNOWN_ISSUES.md.
+LISI_SUBSAMPLE_SPREAD = {"ilisi": 1.5e-4, "clisi": 2.6e-4, "at_percent": 50,
+                         "measured": "2026-11-09"}
+
 
 class scib_pandas_compat:
     """Restore `pandas.value_counts` for the duration of a scIB call, then remove it again.

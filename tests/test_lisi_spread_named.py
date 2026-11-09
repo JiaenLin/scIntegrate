@@ -94,7 +94,10 @@ check("and names the measured spread, where it was measured, and KNOWN_ISSUES",
       and f"--lisi-subsample {SP['at_percent']}" in sub and "KNOWN_ISSUES" in sub, sub)
 every = beside_totals(payload(lisi_subsample=None))
 check("a run on every cell: says no subsample was drawn, and claims no spread for this page",
-      "every cell" in every and "no subsample" in every and "move between" not in every, every)
+      "all the cells" in every and "no subsample" in every and "move between" not in every, every)
+nuclei = beside_totals(payload(lisi_subsample=50, unit="nuclei"))
+check("and it names the run's own unit: a nucleus run's subsample is of the nuclei",
+      "50% subsample of the nuclei" in nuclei, nuclei)
 old = beside_totals(payload())
 check("a report.json from before the record: says it does not record which, and names the spread",
       "does not record" in old and bool(SP) and sci(SP["ilisi"]) in old, old)

@@ -1,7 +1,7 @@
 """scintegrate — is integration needed, which method, and one object carrying the answer.
 
     scintegrate doctor                        # what is installed, and what each absence costs
-    scintegrate assess    --h5ad J.h5ad --out DIR --species S --label-key L --design d.csv
+    scintegrate assess    --h5ad J.h5ad --out ASSESS --species S --label-key L --design d.csv
     scintegrate integrate --h5ad J.h5ad --out DIR --species S --label-key L --design d.csv \
                           --methods none,harmony,bbknn,scvi,scanvi
     scintegrate score     --h5ad DIR/objects/cohort_integrated.h5ad --out DIR --species S --label-key L
@@ -10,6 +10,9 @@
 `--species` is required and checked against the object's gene identifiers; `--assay` (scrna or
 snrna) is optional, because nothing here depends on it, and is recorded as given or as "not
 declared".
+
+Each command writes its own run directory - report.json, STATUS.json and the seal - so `assess`
+and `integrate` take different `--out`. `score` is pointed at the directory `integrate` wrote.
 
 `assess` answers "is integration needed" WITHOUT training anything, because that question should
 be settled before spending a GPU on methods you may not want. `integrate` runs the methods, scores
@@ -716,6 +719,9 @@ def _integrate(a):
                "unit": D["unit"],
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
                "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
+               # The record the report's LISI sentence is worded from: a subsample is drawn from
+               # an unseeded source, and only this says whether this run's iLISI/cLISI carry it.
+               "lisi_subsample": a.lisi_subsample,
                "umap_min_dist": a.min_dist, "umap_n_neighbors": FIG.N_NEIGHBORS,
                "colour_by": list(D.get("colour_cols") or []),
                "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
@@ -918,10 +924,11 @@ def _score(a):
     as this did, dropped BBKNN - whose result IS its graph - from the re-scored ranking without a
     word, and then rewrote the winner in report.json over a ranking it was missing from.
 
-    It rewrites `tables/scib_*.csv` and, where `--out` holds the run's report.json, the ranking and
-    the metrics in it, and then rebuilds `reports/integration.html` and `README.md` from that file.
-    Nothing is retrained and no embedding or graph changes. The tool's own kNN metrics need no
-    external package and are not re-scored.
+    It rewrites `tables/scib_*.csv` and, where `--out` holds a report.json that `integrate` wrote,
+    the ranking and the metrics in it, and then rebuilds `reports/integration.html` and `README.md`
+    from that file. A report.json another command wrote - `assess`, sharing the directory - is that
+    command's record and is left as it is. Nothing is retrained and no embedding or graph changes.
+    The tool's own kNN metrics need no external package and are not re-scored.
 
     THE OBJECT IS NOT REWRITTEN. It is this command's input and may sit in a sealed run directory,
     so `uns['scintegrate']['benchmark']` keeps the scores of the run that wrote it; report.json
@@ -1038,9 +1045,30 @@ def _score(a):
            "YES" if r["method"] == chosen["default"] else ""] for r in results])
     print(f"\nrewrote {out}/tables/scib_*.csv")
     rp = out / "report.json"
+    payload, unreadable = None, None
     if rp.exists():
         try:
             payload = json.loads(rp.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("it does not hold a JSON object")
+        except (OSError, ValueError) as e:
+            payload, unreadable = None, e
+    # ONLY AN INTEGRATION'S RECORD IS AN INTEGRATION'S TO REWRITE (GAP-C22). `assess` writes a
+    # report.json too, and when it shared this --out with an integrate killed during scoring, the
+    # one found here was assess's. Writing a ranking into it and rebuilding assessment.html from the
+    # mixture produced a record that says it is an assessment and carries a benchmark no assessment
+    # computes. Another command's record is left exactly as it was, and said so.
+    if unreadable is not None:
+        print(f"      report.json NOT rewritten: {unreadable}", file=sys.stderr)
+    elif payload is None:
+        print(f"      no {rp}: nothing else to rewrite. The re-scored numbers are the tables "
+              f"above.")
+    elif payload.get("command") != "integrate":
+        print(f"      {rp} NOT rewritten: it was written by `{payload.get('command')}`, not by "
+              f"`integrate`, and is that command's record. The re-scored numbers are the tables "
+              f"above. Give each command its own --out.")
+    else:
+        try:
             payload["chosen"] = chosen
             by_m = {r["method"]: r for r in results}
             for entry in payload.get("methods", []):
@@ -1052,14 +1080,14 @@ def _score(a):
                     entry["sees"] = ME.sees(r["method"])
             payload["rescored"] = True
             payload["object_rescored"] = False
+            # iLISI and cLISI are this command's now, scored under its own --lisi-subsample.
+            payload["lisi_subsample"] = a.lisi_subsample
             rp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
             print(f"      {rp} (chosen and metrics rewritten)")
             for line in _rebuild(out, payload):
                 print(f"      {line}")
         except (OSError, ValueError) as e:
             print(f"      report.json NOT rewritten: {e}", file=sys.stderr)
-    else:
-        print(f"      no {rp}: nothing else to rewrite. The re-scored numbers are the tables above.")
     print(f"  the object itself is NOT rewritten: {a.h5ad} is this command's input, and its "
           f"uns['scintegrate']['benchmark'] still holds the scores of the run that wrote it")
     return 0

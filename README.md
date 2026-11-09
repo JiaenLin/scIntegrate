@@ -39,23 +39,30 @@ install rather than composed from bounds.
 ## Run
 
 ```bash
-scintegrate assess    --h5ad joint.h5ad --out results/ --species homo_sapiens --assay scrna \
+scintegrate assess    --h5ad joint.h5ad --out results/assess \
+    --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --design design.csv
 
-scintegrate integrate --h5ad joint.h5ad --out results/ --species homo_sapiens --assay scrna \
+scintegrate integrate --h5ad joint.h5ad --out results/integrate \
+    --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --design design.csv \
     --colour-by cell_type,cell_type_forced,cell_compartment \
     --methods none,harmony,bbknn,scvi,scanvi
 
-scintegrate score     --h5ad results/objects/cohort_integrated.h5ad --out results/ \
-    --species homo_sapiens --batch-key sample --label-key cell_type
+scintegrate score     --h5ad results/integrate/objects/cohort_integrated.h5ad \
+    --out results/integrate --species homo_sapiens --batch-key sample --label-key cell_type
 ```
 
 `assess` answers whether integration is needed without training anything. `integrate` runs the
 methods, scores them with scIB, names a default embedding, and writes one object holding every
 embedding beside the counts they came from. `score` re-runs the benchmark against an object that
 already holds the embeddings and graphs — nothing is retrained, and the object is not rewritten:
-it rewrites the tables and `report.json` and rebuilds the report from them.
+it rewrites the tables and the `report.json` that `integrate` wrote, and rebuilds the report from
+them.
+
+Each command writes its own run directory: `report.json`, `STATUS.json` and the seal. So `assess`
+and `integrate` take different `--out`, and `score` is pointed at the directory `integrate` wrote.
+`score` leaves a `report.json` that another command wrote exactly as it found it.
 
 ### Species and assay
 

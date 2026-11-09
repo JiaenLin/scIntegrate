@@ -1,16 +1,25 @@
 # What scIntegrate writes, and which file is the answer
 
 ```
-<--out>/
-├── objects/cohort_integrated.h5ad   THE DELIVERABLE (integrate only)
-├── reports/
-│   ├── assessment.html              from `assess` — is integration needed
-│   └── integration.html             from `integrate` — START HERE
-├── tables/*.csv                     every number the reports show
+<the --out given to integrate>/
+├── objects/cohort_integrated.h5ad   THE DELIVERABLE
+├── reports/integration.html         START HERE
+├── tables/*.csv                     every number the report shows
 ├── figures/*.png                    every method at one shared scale
 ├── report.json                      every number again, machine-readable
+├── STATUS.json, SEALED.txt          how the run ended, and what it left
 └── README.md                        written by INSPECTING this directory
+
+<the --out given to assess>/
+├── reports/assessment.html          is integration needed
+├── tables/*.csv, figures/*.png      the per-cell-type measurement, uncorrected
+├── report.json                      the same numbers, machine-readable
+└── STATUS.json, SEALED.txt
 ```
+
+**Each command writes its own run directory.** Both write `report.json`, `STATUS.json` and a seal,
+so in one shared directory the second overwrites the first's record, and an `integrate` killed
+during scoring leaves `assess`'s `report.json` beside the object. Give them different `--out`.
 
 `README.md` is generated from what is on disk, not from what the run intended, so where the two
 disagree the README is right. Read it before the HTML if you have arrived at this directory cold.
@@ -72,10 +81,11 @@ The object appears **before** the benchmark runs, carrying every embedding and a
 `uns['scintegrate']['benchmark']` says it was not scored, the run did not finish its metrics —
 `scintegrate score` computes them from it without retraining anything. It always rewrites
 `tables/scib_*.csv`. It rewrites `report.json`, and rebuilds the HTML report and the README, only
-where the run directory already holds a `report.json`, and a run killed during scoring has none,
-so its re-scored tables are the record. It never rewrites the object, which is its input, so the
-object's `uns` keeps saying "not scored yet"; where a `report.json` is rewritten it records
-`object_rescored: false`.
+where the run directory holds a `report.json` that `integrate` wrote. A run killed during scoring
+has none of its own, so its re-scored tables are the record. A `report.json` that another command
+wrote there is that command's record, and is left exactly as it is. It never rewrites the object,
+which is its input, so the object's `uns` keeps saying "not scored yet"; where a `report.json` is
+rewritten it records `object_rescored: false`.
 
 ## The tables
 

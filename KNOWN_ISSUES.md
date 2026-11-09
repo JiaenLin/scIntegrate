@@ -75,7 +75,32 @@ Three levers, each a stated trade:
 |---|---|
 | igraph Leiden flavour (default on) | nothing — same algorithm, same graph, same resolution, faster implementation. `--no-fast-leiden` restores scIB's literal behaviour |
 | `--scib-resolutions N` | a coarser **search** for the best-agreeing resolution, not a different metric. Leave unset to reproduce a published scIB number exactly |
-| `--lisi-subsample PCT` | a noisier LISI estimate, not a biased one |
+| `--lisi-subsample PCT` | a noisier LISI estimate, not a biased one, and one that moves between runs (below) |
+
+## iLISI and cLISI move between executions under `--lisi-subsample`: measured 2026-11-09
+
+`--lisi-subsample PCT` has scIB estimate iLISI and cLISI on a random PCT% of the cells. scIB's
+compiled LISI helper draws that subsample from `std::random_device` (`knn_graph.cpp`:
+`random_device rd; mt19937 gen(rd())`), so no seed this tool passes reaches it. Every execution
+scores a different set of cells, and the two metrics, one on each side of the scIB total, move
+between two runs of the same command.
+
+**Measured once, between two executions of one run at `--lisi-subsample 50`**, on one cohort
+of about 10⁵ observations, for the two methods that train nothing (`none`, `bbknn`). iLISI moved
+by up to **1.5e-4** and cLISI by up to **2.6e-4**. Every other scIB metric of those two methods
+agreed to 1e-6. A different cohort size or percentage has its own spread. This is the only
+measurement there is, and the value is `benchmark.LISI_SUBSAMPLE_SPREAD`.
+
+**What it costs a reader.** Each enters a total through a mean, so a method's total moves by at
+most `w_bio × ΔcLISI / n_bio + (1 − w_bio) × ΔiLISI / n_batch`. Here `n_bio` and `n_batch` are
+the metrics its two means were taken over, the `n/of` counts printed beside every total. For six
+and four at `--w-bio 0.6` that is about 4e-5. This is an inference from the weighting, not a
+measurement. A gap between two totals smaller than that is no gap.
+
+**What to do.** Leave `--lisi-subsample` unset when a total must agree across runs. Without it
+scIB uses every cell, so no subsample is drawn: its default percentage is 100, and the helper
+skips a cell only when a draw from 1 to 100 exceeds the percentage. The report says, under the
+totals, which of the two a run did, read from `lisi_subsample` in `report.json`.
 
 ## scANVI is semi-supervised and ranks against unsupervised methods on equal terms
 
