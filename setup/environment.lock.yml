@@ -47,6 +47,8 @@ dependencies:
       # --- the methods, one line each. Any of them may be omitted; the method is then named in
       # the report as not compared, rather than quietly missing from the comparison.
       - harmonypy==0.0.10
+      # holds harmony's fit at one thread (GAP-C54); the version the cluster install carries
+      - threadpoolctl==3.6.0
       - bbknn==1.6.0
 
       # --- the benchmark. Without scib the run still happens and the kNN metrics are still

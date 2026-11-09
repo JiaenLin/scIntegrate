@@ -176,43 +176,49 @@ Every method adds a column to each panel figure, all at one shared scale. Five m
 figures. They scroll rather than shrink, because rescaling per panel is the single easiest way to
 mislead with this figure — a dispersed method drawn to fit looks compact.
 
-## Harmony's embedding varies between executions — OPEN, measured 2026-09-06
+## Harmony's embedding varied between executions — CLOSED in 0.5.0 (GAP-C54)
 
-Two runs of this tool over a bit-identical input, with identical recorded settings (50 PCs,
-`max_iter_harmony=20`, `random_state=0`, theta and sigma at harmonypy's defaults), produced
-`X_harmony` differing by **0.060** on a scale of 16.7, moving the scIB total from 0.6868 to
-0.6739 — all of it in the biological half, with batch mixing unchanged. Every other method
-reproduced: `X_none` at 0.00e+00, bbknn and scANVI exactly, scVI within 0.0002.
+**What it was.** Up to 0.4.x, two runs of one command over a bit-identical input did not give
+harmony the same `X_harmony`, and harmony's clustering metrics moved with it. On one cohort of
+about 10⁵ observations, three runs at commits that did not touch harmony moved its ARI, NMI and
+isolated-label F1 by more than a tenth, while its three silhouettes agreed to 1e-6 and `none` and
+`bbknn` agreed on every metric but LISI. Its rank among the methods moved with them.
 
-**This is variation, not irreproducibility.** The run is reproducible in the sense the record
-requires: the settings are declared, a re-run regenerates the result from them, and the spread
-between executions is measured and stated below rather than discovered by a reader. What a
-re-run does not give back is the embedding coordinate-for-coordinate. Read harmony's number as
-carrying that spread, not as a figure that failed to reproduce.
+**The cause, measured.** sklearn's KMeans, which harmonypy runs to place its first centroids, adds
+each OpenMP thread's partial sums under a lock, in the order the threads arrive
+(`sklearn/cluster/_k_means_lloyd.pyx`). With more than one thread the centroids differ in their
+last bits from one execution to the next, and harmony's rounds of soft clustering and correction
+carry the difference into the embedding. NMI, ARI and the isolated-label F1 are computed from a kNN
+graph and a Leiden sweep on that embedding, and those discrete steps can turn a last-bit difference
+into a different graph and partition; how far depends on the data. Each candidate was tested on its
+own, on 40,000 synthetic cells:
 
-**It is not the seed and not this tool.** With scIntegrate removed from the picture and
-harmonypy called directly on the embedding the runs gave it:
-
-| measurement | result |
+| candidate | measured |
 |---|---|
-| two calls in one process, 24 threads | 1.6e-12 |
-| two calls in one process, single-threaded | 0.0e+00 |
-| the same call after importing torch first | 2.2e-12 |
-| **the same call on two different nodes** | **0.214** |
+| the fit, pools free (OpenMP at 12 threads) | three fits differ, max \|diff\| 1.9e-5 and 1.7e-5 |
+| the fit, every pool held at one thread | three fits bit-identical, and identical across processes |
+| the neighbour graph, built twice from one embedding | identical; also with numba's pool at 1 or 12 |
+| the Leiden sweep, NMI, ARI and isolated-label F1 on one graph | identical twice, every partition |
+| cells withheld with `--drop-labels` | the same NaN rows in every run: dropped by label before any method |
+| two threaded fits' graphs and sweeps (how far the difference travels) | 4 of 640,000 kNN entries and iLISI (1.2e-5) differ; no Leiden partition, so ARI and NMI agree here. On the cohort they did not |
 
-harmonypy 0.0.10 calls `np.random.seed(random_state)` inside `run_harmony` (`harmony.py:125`)
-and hands an integer seed to sklearn's KMeans, so the algorithm's choices are fixed. What varies
-is the floating-point arithmetic between independent executions on different machines — both of
-which report the same CPU model — amplified through k-means assignments over twenty iterations.
+The 2026-09-06 measurements on a cluster node agree: two harmonypy calls in one process differed
+at 24 threads (1.6e-12) and did not at one thread (0.0e+00). They also put a 0.214 difference on
+two nodes reporting the same CPU model. That was one threaded fit per node, so it cannot separate
+the node from the threads' arrival order, and it is no longer read as a node effect.
 
-**What this costs a reader.** In the run that chose the default embedding, `scanvi` led `harmony`
-by 0.0335 and `harmony` led `scvi` by 0.0176. Harmony's own execution-to-execution movement is
-~0.013 in scIB total. So the first place is robust to it and **the second is not**: in the second
-run harmony scored 0.6739 against scvi's 0.6690, a gap of 0.005, where the first had them 0.018
-apart. Any statement of the form *harmony is the second-best method here* is inside the noise of
-running it twice.
+**The fix.** The fit runs inside `threadpoolctl.threadpool_limits(limits=1)`, opened after
+harmonypy is imported (threadpoolctl limits only the libraries loaded when its context opens).
+Every pool is held, OpenMP and the BLAS, because the cluster measurement held them together. The
+run records the fit's thread count, read inside the limit (`fit_threads` in harmony's settings)
+and in the method's note. `tests/test_harmony_reproducible.py` holds the cause, the controls and
+two runs of the real CLI.
 
-**What would close it.** Nothing in this tool: the variation is harmonypy's arithmetic, not its
-seed. What this tool can do is stop presenting a rank whose gaps are smaller than the method's
-own run-to-run spread — report that spread beside the ranking, measured by running the fit twice —
-and declare in the run's own record which outputs are execution-stable and which are not.
+**What remains, named.**
+- **Another machine.** One thread gives the same bits on one machine. It is not established that a
+  different CPU, or a different build of the numerical libraries, gives the same bits. If it does
+  not, the clustering metrics can move again for the reason above. This has not been measured.
+- **Earlier numbers.** A harmony number made before 0.5.0 is one draw of the threaded fit. A run
+  at 0.5.0 is a fixed draw, which need not be close to it. Compare a re-run with a re-run.
+- **The cost.** One thread for the fit and no other step. Every other method, and all scoring,
+  keeps the threads it had.

@@ -29,7 +29,9 @@ dependencies = ["numpy>=1.24", "scikit-learn>=1.3"]
 run = ["anndata>=0.10", "scanpy>=1.10", "matplotlib>=3.7"]
 
 # one extra per comparable method, so you install the ones you actually want compared
-harmony = ["harmonypy>=0.0.9"]
+# threadpoolctl holds harmony's fit at one thread, so that it gives the same bits twice. It comes
+# with scikit-learn, which harmonypy needs; it is named because the fit depends on it.
+harmony = ["harmonypy>=0.0.9", "threadpoolctl>=2.0"]
 bbknn = ["bbknn>=1.6"]
 # scvi-tools pulls torch and is by far the largest of these (~2.5 GB with CUDA wheels).
 # It provides BOTH scVI and scANVI - they are one package, one install.
@@ -39,7 +41,7 @@ scvi = ["scvi-tools>=1.1"]
 scib = ["scib>=1.1"]
 
 # everything, for a machine where you want the full comparison
-all = ["anndata>=0.10", "scanpy>=1.10", "matplotlib>=3.7", "harmonypy>=0.0.9", "bbknn>=1.6",
+all = ["anndata>=0.10", "scanpy>=1.10", "matplotlib>=3.7", "harmonypy>=0.0.9", "threadpoolctl>=2.0", "bbknn>=1.6",
        "scvi-tools>=1.1", "scib>=1.1"]
 
 test = ["anndata>=0.10", "scanpy>=1.10", "matplotlib>=3.7"]

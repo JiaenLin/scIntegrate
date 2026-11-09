@@ -113,6 +113,22 @@ def _hvg_subset(adata, hvg, n_top_fallback=2000):
                          f"mask)")
 
 
+def _fitted(h, name):
+    """A harmonypy parameter as the fitted model holds it, worded for the run's record.
+
+    Not passed by this tool, so its value is harmonypy's own default - and that is read from the
+    fit rather than written from memory. The record said theta was 2.0 (R harmony's default)
+    while harmonypy 0.0.10 fits with 1 when none is passed: measured on 5,000 synthetic cells,
+    an unset theta and theta=1 give the same bits, and theta=2 moves the embedding by 0.26.
+    """
+    v = getattr(h, name, None)
+    if v is None:
+        return "harmonypy default (not readable from this harmonypy's fitted model)"
+    u = np.unique(np.asarray(v, dtype="float64"))
+    val = f"{u[0]:g}" if u.size == 1 else "values " + ", ".join(f"{x:g}" for x in u)
+    return f"{val} (harmonypy's own default, read from the fitted model)"
+
+
 def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         n_latent=30, n_pcs=50, seed=0, max_epochs=None, scanvi_max_epochs=None,
         counts_layer="counts", **kwargs):
@@ -141,6 +157,7 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
 
     if method == "harmony":
         import harmonypy
+        from threadpoolctl import threadpool_info, threadpool_limits
         # `random_state` is a real parameter of run_harmony with its own default of 0. Not
         # passing it meant --seed changed scVI, scANVI and every UMAP while leaving Harmony on a
         # fixed internal seed - so two runs at different seeds produced a Harmony embedding that
@@ -149,14 +166,42 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         # max_iter_harmony is 20 against harmonypy's default of 10: a deliberate deviation, so
         # that a cohort with many libraries is not scored on a correction that was still moving
         # when it stopped. It is recorded here and in docs/METHODS.md rather than left in code.
+        #
+        # THE FIT RUNS ON ONE THREAD, because on more than one it did not return the same bits
+        # twice (GAP-C54). sklearn's KMeans, which harmonypy runs to place its first centroids,
+        # adds each OpenMP thread's partial sums under a lock in the order the threads arrive
+        # (sklearn/cluster/_k_means_lloyd.pyx), so the centroids differ in their last bits from
+        # one execution to the next and harmony's rounds carry that into X_harmony. scIB's
+        # clustering metrics (ARI, NMI, isolated-label F1) are a kNN graph and a Leiden sweep
+        # computed FROM the embedding, and those discrete steps can turn a last-bit difference
+        # into a different graph and partition: on one cohort harmony's ARI moved by more than a
+        # tenth between runs while its silhouettes agreed to 1e-6. How far it travels depends on
+        # the data - on 40,000 synthetic cells it changed 4 of 640,000 kNN entries and iLISI by
+        # 1.2e-5, and no partition. On one embedding's bits those steps are exact
+        # (tests/test_harmony_reproducible.py), so the variation is removed here, at the fit, and
+        # nowhere downstream. Measured on those synthetic cells: three fits with the pools free
+        # differ by up to 1.9e-5; held at one thread they are bit-identical within a process and
+        # across processes.
+        #
+        # EVERY pool, not only OpenMP: the only measurement on a cluster node held OpenMP and the
+        # BLAS at one thread together, and only that condition is known to give identical bits
+        # there. The limit opens AFTER the import above, because threadpoolctl limits only the
+        # libraries loaded when its context is entered - a fit that loaded sklearn inside it ran
+        # threaded. The fit's thread count is read inside the limit and recorded, not assumed.
         kw = dict(max_iter_harmony=20, random_state=seed)
-        h = harmonypy.run_harmony(np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
-                                  adata.obs, [batch_key], **kw)
+        with threadpool_limits(limits=1):
+            fit_threads = max((p.get("num_threads") or 1 for p in threadpool_info()), default=1)
+            h = harmonypy.run_harmony(np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
+                                      adata.obs, [batch_key], **kw)
+        held = (" (bit-identical between executions on one machine)" if fit_threads == 1
+                else " - NOT held to one: this embedding varies between executions")
         return {"kind": "embed", "emb": np.asarray(h.Z_corr).T, "adata": None,
-                "note": f"Harmony on {used_pcs} PCs, max_iter_harmony=20, random_state={seed}",
+                "note": (f"Harmony on {used_pcs} PCs, max_iter_harmony=20, random_state={seed}, "
+                         f"fitted on {fit_threads} thread{'s' if fit_threads != 1 else ''}{held}"),
                 "settings": {"n_pcs": used_pcs, "max_iter_harmony": 20, "random_state": seed,
-                             "theta": "harmonypy default (2.0)",
-                             "sigma": "harmonypy default (0.1)"}}
+                             "fit_threads": fit_threads,
+                             "theta": _fitted(h, "theta"),
+                             "sigma": _fitted(h, "sigma")}}
 
     if method == "bbknn":
         import bbknn, anndata as ad

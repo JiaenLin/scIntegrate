@@ -245,6 +245,10 @@ argparse with exit 2 (`the following arguments are required: --species`). Add `-
 species the cells came from, and nothing else in the command changes: the species is checked and
 recorded, and no parameter, method or metric reads it. Also in 0.5.0: `score` rewrites only a
 `report.json` that `integrate` wrote, and the report names the spread `--lisi-subsample` carries.
+Harmony's fit runs on one thread, so on one machine it returns the same embedding, and the same
+scIB numbers, every time. A harmony number from 0.4.x was one draw of a threaded fit and need not
+match a 0.5.0 run (KNOWN_ISSUES). Harmony's recorded theta is now the value the fit used, 1, where
+the record said 2.0.
 
 ## License
 

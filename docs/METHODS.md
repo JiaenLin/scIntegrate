@@ -83,17 +83,37 @@ The run now prints the shortfall and every method uses the same reduced number.
 ## Harmony
 
 ```python
-harmonypy.run_harmony(X_pca[:, :n_pcs], obs, [batch_key],
-                      max_iter_harmony=20, random_state=seed)
+with threadpoolctl.threadpool_limits(limits=1):      # opened after harmonypy is imported
+    harmonypy.run_harmony(X_pca[:, :n_pcs], obs, [batch_key],
+                          max_iter_harmony=20, random_state=seed)
 ```
 
 | parameter | here | harmonypy default | why |
 |---|---|---|---|
 | `max_iter_harmony` | **20** | 10 | **deviation.** A cohort with many libraries can still be moving at 10; stopping there scores a correction that had not converged |
 | `random_state` | `--seed` | 0 | **fixed defect.** It was not passed, so `--seed` changed scVI, scANVI and every UMAP while Harmony stayed on a fixed internal seed. Two runs at different seeds gave one identical embedding and four different ones, with nothing saying so |
-| `theta` | default (2.0) | 2.0 | diversity penalty; raising it corrects harder |
-| `sigma` | default (0.1) | 0.1 | soft-cluster width |
+| threads for the fit | **1** (every pool threadpoolctl finds: OpenMP and the BLAS) | the process's | **fixed defect (GAP-C54).** On more than one thread the fit did not return the same bits twice, and scIB's clustering metrics turned the difference into a different ranking. Below |
+| `theta` | default (1) | 1 | diversity penalty; raising it corrects harder. **The record said 2.0**, which is R harmony's default; harmonypy 0.0.10 fits with 1 when none is passed (measured: unset and `theta=1` give the same bits). The run now records the value read from the fitted model |
+| `sigma` | default (0.1) | 0.1 | soft-cluster width; recorded as read from the fitted model |
 | `nclust` | default (auto) | auto | |
+
+**Why one thread.** sklearn's KMeans, which harmonypy runs to place its first centroids, adds each
+OpenMP thread's partial sums under a lock, in the order the threads arrive
+(`sklearn/cluster/_k_means_lloyd.pyx`). With more than one thread the centroids differ in their
+last bits between executions, and harmony's rounds carry that into `X_harmony`. NMI, ARI and the
+isolated-label F1 are computed from a kNN graph and a Leiden sweep on the embedding, and those
+discrete steps can turn a last-bit difference into a different graph and partition. How far depends
+on the data: on one cohort harmony's ARI moved by more than a tenth between runs; on 40,000
+synthetic cells two threaded fits changed 4 of 640,000 kNN entries and iLISI by 1.2e-5, and no partition. On one
+embedding's bits the steps are exact: the graph is identical built twice, and so are the sweep and
+its metrics. So the
+variation is removed at the fit and nowhere downstream (`tests/test_harmony_reproducible.py`).
+Measured on 40,000 synthetic cells: three fits with the pools free differ by up to 1.9e-5, and held
+at one thread they are bit-identical within a process and across processes. Every pool is held,
+not only OpenMP, because the one measurement on a cluster node held OpenMP and the BLAS together.
+What one thread does **not** establish: identical bits on a different CPU or a different build of
+the numerical libraries. That has not been measured, and on a different machine the clustering
+metrics can move again for the reason above.
 
 Harmony corrects **in PC space**, so its output has `--n-pcs` dimensions and is directly
 comparable with `none`.
@@ -224,7 +244,14 @@ correction is most likely to have moved something.
 ## Reproducibility
 
 `--seed` reaches `scvi.settings.seed`, `harmonypy`'s `random_state`, `sc.pp.pca`, `sc.pp.neighbors`
-and `sc.tl.umap`. BBKNN is deterministic.
+and `sc.tl.umap`. BBKNN is deterministic. Harmony's fit runs on one thread, so on one machine it
+gives the same bits every time (above, *Why one thread*).
+
+The neighbour graph scIB scores from is exact on fixed bits only while scanpy's `settings.n_jobs`
+is 1, its default, which this tool never changes. scanpy hands that number to pynndescent, which
+draws its candidates per thread (`rng_state + n` in `new_build_candidates`), so at any other value
+the graph, and every clustering metric on it, depends on the thread count (measured: 40,000
+synthetic cells, `n_jobs` 12 against 1: 30,040 of 640,000 kNN entries differ).
 
 What `--seed` does **not** pin: GPU non-determinism in scVI/scANVI training. Two runs on the same
 seed and different hardware can differ slightly. Where that matters, compare the ranking rather

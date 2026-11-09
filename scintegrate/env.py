@@ -40,7 +40,9 @@ CAPABILITIES = {
         "fatal": False,
     },
     "harmony": {
-        "packages": ["harmonypy"],
+        # threadpoolctl holds harmony's fit at one thread (methods.py, GAP-C54); its version is
+        # recorded with the run because it decides whether the fit is reproducible.
+        "packages": ["harmonypy", "threadpoolctl"],
         "loses": "Harmony is not compared",
         "hint": "pip install -e '.[harmony]'",
         "fatal": False,

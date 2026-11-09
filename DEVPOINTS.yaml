@@ -49,13 +49,16 @@ points:
     # The suites that hold a method to this point. tests/test_methods.py was named here and never
     # existed; tests/test_statements_true.py now fails on any name in this file that does not.
     tests: [tests/test_methods_settings.py, tests/test_design.py, tests/test_status_contract.py,
-            tests/test_cohort_axes.py, tests/test_score_reads_graphs.py]
+            tests/test_cohort_axes.py, tests/test_score_reads_graphs.py,
+            tests/test_harmony_reproducible.py]
     proves: >
       it runs on both fixture shapes, is scored beside `none`, declares what it sees, and pads
       withheld cells with NaN rather than zero
     cannot_prove: >
-      that its embedding is good, or that it is stable between executions - harmony's is not, by
-      0.214 between two machines, and only a repeated run measures that
+      that its embedding is good, or that it is stable between executions. Harmony's fit is held
+      to one thread and is bit-identical between executions on one machine
+      (tests/test_harmony_reproducible.py); whether another machine gives the same bits is not
+      measured, and only a repeated run on it measures that
     notes: >
       SEES is the single declaration. NEEDS_LABELS and benchmark.LABEL_SUPERVISED are DERIVED
       from it; adding a method that sees labels means adding one entry, not three.
