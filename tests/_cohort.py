@@ -16,6 +16,9 @@ LIBRARIES = [f"L{i}" for i in range(1, 7)]
 DONOR = {lib: f"D{i}" for i, lib in enumerate(LIBRARIES, 1)}             # one library per donor
 CONDITION = {lib: ("unstimulated" if i <= 3 else "stimulated") for i, lib in enumerate(LIBRARIES, 1)}
 CHEMISTRY = {lib: ("v3" if i % 2 else "v3.1") for i, lib in enumerate(LIBRARIES, 1)}
+#: The design table's columns: the batch key first, then what the study varied. These are the
+#: names the repository's own examples use (tests/test_examples_are_synthetic.py).
+DESIGN_COLUMNS = ("library", "donor", "condition", "chemistry")
 
 
 def cohort(path, seed=0):
@@ -56,6 +59,6 @@ def cohort(path, seed=0):
 
 def design(path):
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("library,donor,condition,chemistry\n")
+        fh.write(",".join(DESIGN_COLUMNS) + "\n")
         for lib in LIBRARIES:
             fh.write(f"{lib},{DONOR[lib]},{CONDITION[lib]},{CHEMISTRY[lib]}\n")

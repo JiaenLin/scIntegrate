@@ -13,7 +13,9 @@ Every check here fails on a statement that WAS false or dead in this repository,
   5. tests/run_all.py named an undefined variable on its red path, so the first red suite killed
      the runner before it said which suite was red
   6. (a guard, not a past defect) every documented command line still parses, now that
-     --species is required
+     --species is required - the README, docs/ and the usage text `--help` prints
+  7. the README, the quickstart and `--help` ran `assess` and `integrate` into one --out, so a
+     killed integrate left assess's report.json where `score` would rewrite it (GAP-C22)
 
 Needs numpy, which `describe` imports; nothing heavier.
 """
@@ -22,7 +24,6 @@ from __future__ import annotations
 import ast
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -133,36 +134,11 @@ with tempfile.TemporaryDirectory() as td:
 # ----------------------------------------------------------------------------------------- 6
 print("\n6. every documented command line parses")
 ap = cli.parser()
-def _blocks(text):
-    """The bodies of fenced code blocks, paired by walking the fences in order - a regex over
-    the whole text pairs the closing fence of one block with the opening of the next."""
-    out, cur = [], None
-    for ln in text.splitlines():
-        if ln.strip().startswith("```"):
-            if cur is None:
-                cur = []
-            else:
-                out.append("\n".join(cur))
-                cur = None
-        elif cur is not None:
-            cur.append(ln)
-    return out
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _docs  # noqa: E402
 
-
-examples = []
-for doc in [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]:
-    text = doc.read_text(encoding="utf-8")
-    for block in _blocks(text):
-        joined = re.sub(r"\\\n\s*", " ", block)
-        for ln in joined.splitlines():
-            m = re.search(r"(?:^|\s)(?:scintegrate|-m scintegrate\.cli)\s+(assess|integrate|score|report)\b(.*)", ln)
-            if not m:
-                continue
-            argv = m.group(1) + m.group(2)
-            argv = re.sub(r"\$\{\w+:-([^}]*)\}", r"\1", argv)          # ${NCPUS:-1} -> 1
-            argv = re.sub(r"\$\{?\w+\}?", "X", argv)                    # $RUNDIR -> X
-            argv = argv.split("2>&1")[0].split("|")[0]
-            examples.append((f"{doc.relative_to(ROOT)}", shlex.split(argv)))
+DOCS = _docs.documents()
+examples = [(name, [cmd, *argv]) for name, cmds, _ in DOCS for cmd, argv in cmds]
 bad = []
 for where, argv in examples:
     try:
@@ -174,6 +150,28 @@ for where, argv in examples:
         bad.append(f"{where}: scintegrate {' '.join(argv)[:120]}")
 check("the documentation carries command lines to check", len(examples) >= 5, len(examples))
 check("each of them is accepted by the parser as written", not bad, bad)
+
+# ----------------------------------------------------------------------------------------- 7
+print("\n7. each command is documented into its own run directory (GAP-C22)")
+# `assess` and `integrate` both write report.json, STATUS.json and the seal into --out. Documented
+# into ONE directory, an integrate killed during scoring left assess's report.json there, and
+# `score` then wrote the integration's ranking into it and rebuilt assessment.html from the mix.
+shared, aimed = [], []
+for name, cmds, _ in DOCS:
+    outs = {c: {o.rstrip("/") for c_, argv in cmds if c_ == c for o in _docs.option(argv, "--out")}
+            for c in ("assess", "integrate")}
+    if outs["assess"] & outs["integrate"]:
+        shared.append(f"{name}: {sorted(outs['assess'] & outs['integrate'])}")
+    for c_, argv in cmds:
+        if c_ != "score" or not outs["integrate"]:
+            continue
+        o = [x.rstrip("/") for x in _docs.option(argv, "--out")]
+        h = _docs.option(argv, "--h5ad")
+        if not (o and o[0] in outs["integrate"] and h and h[0].startswith(o[0] + "/")):
+            aimed.append(f"{name}: score {' '.join(argv)[:110]}")
+check("no document runs assess and integrate into the same --out", not shared, shared)
+check("where a document runs integrate, its score command re-scores that run: --out is integrate's "
+      "directory and --h5ad the object inside it", not aimed, aimed)
 
 print(f"\n{'PASS' if not FAILED else 'FAIL'}: {len(FAILED)} failing")
 sys.exit(1 if FAILED else 0)

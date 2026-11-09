@@ -4,6 +4,10 @@ A sibling tool's pyproject said 0.1.0 while its VERSION, its __init__ and its ci
 0.3.0, and nothing noticed because each file is read by a different consumer: pip reads one,
 `--version` reads another, a reader cites the third. Drift between them is invisible until
 somebody tries to reproduce a result from a version that never existed.
+
+And the number must move when the interface breaks (GAP-C20): a command line an earlier release
+documented, and today's parser refuses, means the version moved past that release and the README
+and KNOWN_ISSUES say which flag did it.
 """
 from __future__ import annotations
 import re
@@ -48,6 +52,73 @@ check("every extra the README tells you to install exists",
       named <= extras, f"documented {sorted(named)} vs declared {sorted(extras)}")
 check("scvi and scib are separate extras, since one pulls torch and the other does not",
       {"scvi", "scib"} <= extras)
+
+# ------------------------------------------------- a command line that stops parsing moves the version
+# GAP-C20. `--species` became required while VERSION stayed 0.4.0, so every command line written for
+# 0.4.0 stopped at argparse - exit 2 - under a version that said nothing had changed, and a reader had
+# no number to tell the two interfaces apart by. What each release told a user to type is held here,
+# from that release's own README, and parsed by today's parser.
+import contextlib  # noqa: E402
+import io  # noqa: E402
+import shlex  # noqa: E402
+
+from scintegrate import cli  # noqa: E402
+
+SHIPPED = {
+    # `git show 722bc79:README.md`, its "## Run" block: the last commit at 0.4.0 before --species.
+    "0.4.0": [
+        "assess --h5ad joint.h5ad --out results/ --batch-key sample --label-key cell_type "
+        "--design design.csv",
+        "integrate --h5ad joint.h5ad --out results/ --batch-key sample --label-key cell_type "
+        "--design design.csv --colour-by cell_type,cell_type_forced,cell_compartment "
+        "--methods none,harmony,bbknn,scvi,scanvi",
+        "score --h5ad results/objects/cohort_integrated.h5ad --out results/ --batch-key sample "
+        "--label-key cell_type",
+    ],
+}
+
+
+def parts(v):
+    return tuple(int(x) for x in v.split("."))
+
+
+def breaks_past(v, release):
+    """Semantic versioning: below 1.0.0 the MINOR number is the one a breaking change moves, from
+    1.0.0 the major."""
+    i = 0 if parts(release)[0] >= 1 else 1
+    return parts(v)[:i + 1] > parts(release)[:i + 1]
+
+
+def stops(line):
+    """(exit code, the flags argparse's error names) when today's parser refuses a line, else None."""
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            cli.parser().parse_args(shlex.split(line))
+    except SystemExit as e:
+        said = (err.getvalue().strip().splitlines() or [""])[-1]
+        return e.code, re.findall(r"--[a-z][\w-]*", said.split("error:", 1)[-1])
+    return None
+
+
+for release, lines in SHIPPED.items():
+    stopped = {ln: s for ln in lines if (s := stops(ln))}
+    flags = sorted({f for _, fl in stopped.values() for f in fl})
+    if not stopped:
+        check(f"every command line {release} documented still parses", True)
+        continue
+    check(f"a {release} command line that no longer parses stops at argparse with exit 2, naming "
+          f"what it lacks", all(code == 2 for code, _ in stopped.values()) and bool(flags),
+          stopped)
+    check(f"so VERSION has moved past {release} in the number a breaking change moves",
+          breaks_past(vfile, release), f"VERSION {vfile}; refused: {flags}")
+    for doc in ("README.md", "KNOWN_ISSUES.md"):
+        paras = re.split(r"\n\s*\n", (ROOT / doc).read_text(encoding="utf-8"))
+        said = [f for f in flags if any(
+            f in p and any(breaks_past(v, release) and parts(v) <= parts(vfile)
+                           for v in re.findall(r"\b\d+\.\d+\.\d+\b", p)) for p in paras)]
+        check(f"{doc} names the version from which {', '.join(flags)} is required",
+              said == flags, f"named: {said} of {flags}")
 
 print("")
 if fails:
