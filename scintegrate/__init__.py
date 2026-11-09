@@ -13,4 +13,4 @@ retained structure, draws every method at one scale, names a default embedding o
 and states separately - computed from the design, not assumed - what that embedding may be used
 for.
 """
-__version__ = "0.4.0"
+__version__ = "0.5.0"

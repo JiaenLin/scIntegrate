@@ -237,6 +237,15 @@ statistic separates them. The figures show what was moved, not whether it should
 Nor does anything here show the labels are correct. They are inherited from the annotation, and
 every limit recorded there applies to every number here.
 
+## Versions
+
+**0.5.0.** `--species` is required by `assess`, `integrate` and `score`, and is checked against
+the object. `--assay` is new, optional, and recorded. A command line written for 0.4.x stops at
+argparse with exit 2 (`the following arguments are required: --species`). Add `--species` with the
+species the cells came from, and nothing else in the command changes: the species is checked and
+recorded, and no parameter, method or metric reads it. Also in 0.5.0: `score` rewrites only a
+`report.json` that `integrate` wrote, and the report names the spread `--lisi-subsample` carries.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

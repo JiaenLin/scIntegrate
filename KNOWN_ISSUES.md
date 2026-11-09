@@ -2,6 +2,23 @@
 
 Measured, not suspected. Each entry says what it costs you and what to do about it.
 
+## A command line written for 0.4.x stops at argparse: `--species` is required from 0.5.0
+
+`assess`, `integrate` and `score` require `--species` from 0.5.0 (README, *Versions*). A job script
+written for 0.4.x stops before it reads anything, with exit 2:
+
+```
+scintegrate assess: error: the following arguments are required: --species
+```
+
+**What it costs:** the run, and nothing else. argparse refuses before the run directory is touched,
+so nothing is written to `--out`.
+
+**What to do:** add `--species` with the species the cells came from, as Ensembl writes it
+(`homo_sapiens`, `mus_musculus`; `human` and `mouse` are read the same way). Nothing else in the
+command needs to change, and no number depends on it. The species is checked against the object's
+gene identifiers and recorded, and no parameter, method or metric reads it.
+
 ## kBET is normally absent, and the total is taken over one fewer metric
 
 `kBET` is the one scIB batch metric that needs R: `rpy2` plus the kBET R package. On a plain Python
