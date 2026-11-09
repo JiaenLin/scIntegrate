@@ -18,7 +18,7 @@ cell types with different sample balance.
 
 Then do it again with the biological factor in place of the library. This is the part that
 matters and the part usually skipped. If a cell type's libraries do not mix, that is batch
-structure. If its AGE GROUPS also do not mix, in the same populations and to a similar degree,
+structure. If its FACTOR LEVELS also do not mix, in the same populations and to a similar degree,
 then the library structure and the biology are the same structure, and a correction on the
 library key removes the contrast the study exists to measure. No mixing statistic on a corrected
 embedding can recover that distinction, because by then it is gone.
@@ -103,7 +103,7 @@ def per_celltype(emb, labels, batch, factors=None, k=30, min_per_k=3, is_real=No
 def dominance(labels, batch, is_real=None):
     """For each cell type, the largest share held by any single library.
 
-    A population that is 90% one animal is a different object from one drawn evenly from ten,
+    A population that is 90% one sample is a different object from one drawn evenly from ten,
     and integration cannot fix it: there is nothing to align it with. This is here so that a
     cell type reported as 'badly mixed' can be checked for whether it is a population at all.
     """

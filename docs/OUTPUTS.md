@@ -47,7 +47,13 @@ A.uns["scintegrate"]["default_method"]
 A.uns["scintegrate"]["constraint_on_use"]   # computed from your design
 A.uns["scintegrate"]["benchmark"]           # every metric, per method
 A.uns["scintegrate"]["assessment"]          # the per-cell-type measurement
+A.uns["scintegrate"]["provenance"]["species"]   # as declared, and as the gene identifiers read
+A.uns["scintegrate"]["provenance"]["assay"]     # as declared, or "not declared"
 ```
+
+The constraint on use is worded from the design table and nothing else: which declared factor is
+constant within which batch, over how many levels, and whether it is merely nested in the batch
+key or aliased with it. `report.json` carries the same classification under `confounding`.
 
 The choice is recorded **in** the object rather than in a filename, so it travels with the data.
 
@@ -64,7 +70,9 @@ nowhere near the cause.
 The object appears **before** the benchmark runs, carrying every embedding and a `uns` that says
 `"not scored yet"`. It is rewritten in place once the scores exist. If you find an object whose
 `uns['scintegrate']['benchmark']` says it was not scored, the run did not finish its metrics —
-`scintegrate score` will complete it without retraining anything.
+`scintegrate score` computes them from it without retraining anything, into `tables/` and
+`report.json`. It does not rewrite the object, which is its input, so the object's `uns` keeps
+saying "not scored yet" and `report.json` records `object_rescored: false`.
 
 ## The tables
 

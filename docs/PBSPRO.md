@@ -41,6 +41,7 @@ PYTHONPATH="$TOOL" "$PY" -m scintegrate.cli doctor
 PYTHONPATH="$TOOL" "$PY" -m scintegrate.cli integrate \
     --h5ad  "$IN" \
     --out   "$RUNDIR" \
+    --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
     --design "$DESIGN" --bio-factor condition --bio-factor timepoint \
     --methods none,harmony,bbknn,scvi,scanvi \
@@ -96,7 +97,8 @@ Omit all three to reproduce a published scIB benchmark exactly.
 
 **A walltime kill no longer costs you the models.** The object is written as soon as the embeddings
 exist, before scoring starts, and rewritten once the scores are there. If the job dies during
-scoring, run `scintegrate score --h5ad <that object>` and finish the benchmark in minutes.
+scoring, run `scintegrate score --h5ad <that object>` and finish the benchmark in minutes; it
+writes the scores into `tables/` and `report.json` and leaves the object as it found it.
 
 Find your queue's ceilings rather than guessing:
 

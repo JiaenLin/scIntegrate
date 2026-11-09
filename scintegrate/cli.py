@@ -1,10 +1,15 @@
 """scintegrate — is integration needed, which method, and one object carrying the answer.
 
     scintegrate doctor                        # what is installed, and what each absence costs
-    scintegrate assess    --h5ad J.h5ad --out DIR --label-key L --design d.csv
-    scintegrate integrate --h5ad J.h5ad --out DIR --label-key L --design d.csv \
+    scintegrate assess    --h5ad J.h5ad --out DIR --species S --label-key L --design d.csv
+    scintegrate integrate --h5ad J.h5ad --out DIR --species S --label-key L --design d.csv \
                           --methods none,harmony,bbknn,scvi,scanvi
+    scintegrate score     --h5ad DIR/objects/cohort_integrated.h5ad --out DIR --species S --label-key L
     scintegrate report    --out DIR           # rebuild the document from what is on disk
+
+`--species` is required and checked against the object's gene identifiers; `--assay` (scrna or
+snrna) is optional, because nothing here depends on it, and is recorded as given or as "not
+declared".
 
 `assess` answers "is integration needed" WITHOUT training anything, because that question should
 be settled before spending a GPU on methods you may not want. `integrate` runs the methods, scores
@@ -15,6 +20,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+from . import axes     # stdlib only, like status and env: `--help` and `describe` stay instant
 
 REFUSE = 2
 STATE_VERSION = 1      # the numbers, versioned: bump when the same inputs would give a different object
@@ -36,8 +43,17 @@ CANNOT_SHOW = [
 
 # --------------------------------------------------------------------------------- shared load
 
+def _refuse(a, msg):
+    """Print a refusal and keep its words for STATUS.json, so the run directory names the reason
+    and not only the terminal that watched it."""
+    a.refusal = str(msg)
+    print(f"scintegrate: REFUSE - {msg}", file=sys.stderr)
+    return REFUSE
+
+
 def _load(a):
-    """Open the object, resolve the keys, join the design. Refusals are printed and re-raised."""
+    """Open the object, check the declared species against it, resolve the keys, join the design.
+    Refusals are raised as inputs.Refuse."""
     from . import inputs
     # NOT `a.label_sentinel or []`. argparse leaves an `append` option as None when it is not
     # given, and collapsing that to an empty tuple passes "no sentinels" down to inputs.read,
@@ -53,13 +69,26 @@ def _load(a):
         sent = tuple(s for s in a.label_sentinel if s)
     D = inputs.read(a.h5ad, a.batch_key, a.label_key, l1_key=a.l1_key,
                     sentinels=sent, coarse_from_path=a.coarse_from_path)
+    A = D["adata"]
+    # THE SPECIES IS CHECKED BEFORE ANYTHING IS COMPUTED. A species the gene identifiers
+    # contradict is another cohort's declaration carried onto this object, and every number
+    # after this point would be correct arithmetic on a mislabelled run.
+    try:
+        D["species"] = axes.check_species(a.species, A.var, A.var_names)
+    except axes.SpeciesContradicted as e:
+        raise inputs.Refuse(str(e)) from None
+    D["assay"] = axes.assay_record(a.assay)
+    D["unit"] = axes.unit(a.assay)
+    sp_ = D["species"]
+    print(f"  species: {sp_['as']} ({sp_['verdict']}) - {sp_['basis']}"
+          + (f"; {sp_['note']}" if sp_["note"] else ""))
+    print(f"  assay  : {D['assay']['declared']} - no rule here depends on it; recorded, not checked")
     D["colour_cols"], D["colour_why"] = inputs.colour_columns(
         D["adata"].obs,
         [c.strip() for c in (getattr(a, "colour_by", None) or "").split(",") if c.strip()],
-        a.batch_key, a.label_key, a.l1_key)
+        a.label_key, a.l1_key)
     print("  colour : " + ", ".join(f"{c} ({D['colour_why'][c]})" for c in D["colour_cols"]))
-    A = D["adata"]
-    print(f"{A.n_obs:,} cells x {A.n_vars:,} genes")
+    print(f"{A.n_obs:,} {D['unit']} x {A.n_vars:,} genes")
     print(f"  batch  {a.batch_key!r}: {len(set(D['batch']))} level(s)")
     print(f"  label  {a.label_key!r}: {len(set(D['label']))} value(s)")
     print(f"  coarse : {D['coarse_note']}")
@@ -148,13 +177,20 @@ def _sentinel_tables(out, D, a):
                 ["arm", "sentinel", "n_sentinel", "n_in_arm", "pct_of_arm"], rows)
 
 
-def _assessment_tables(out, rows, dom, a):
+def _assessment_tables(out, rows, dom):
     tr = []
     for r in rows:
         if not r.get("measured"):
             tr.append([r["label"], r["n"], "not measured", "", "", "", r.get("why", "")])
             continue
         b = r["batch"]
+        # A POPULATION IN ONE LIBRARY HAS NO BATCH MIXING TO MEASURE. `mixing_within` says so -
+        # foreign and chance are None, with the reason - and formatting None as a number killed
+        # `assess` and `integrate` at this line, after every method had trained and been scored.
+        # A cell type found in a single sample is ordinary in a real cohort.
+        if b.get("foreign") is None:
+            tr.append([r["label"], r["n"], "not measured", "", "", "", b.get("why") or ""])
+            continue
         tr.append([r["label"], r["n"], "measured", f"{b['foreign']:.4f}",
                    f"{b['expected']:.4f}", f"{b['ratio']:.4f}" if b["ratio"] else "", ""])
     _csv(out / "tables" / "celltype_batch_mixing.csv",
@@ -185,8 +221,7 @@ def _assess(a):
     try:
         D = _load(a)
     except inputs.Refuse as e:
-        print(f"scintegrate: REFUSE - {e}", file=sys.stderr)
-        return REFUSE
+        return _refuse(a, e)
     A = D["adata"]
     out = Path(a.out)
     if "X_pca" not in A.obsm:
@@ -218,7 +253,7 @@ def _assess(a):
     print(f"\n  threshold: a ratio below {a.indicates_below} is called batch structure")
     print("  " + summ["indication"])
 
-    _assessment_tables(out, rows, dom, a)
+    _assessment_tables(out, rows, dom)
     if D["sentinels"]:
         _sentinel_tables(out, D, a)
 
@@ -228,14 +263,15 @@ def _assess(a):
     figs += _draw_assessment(out, rows, fnames, a)
 
     payload = {"command": "assess", "n_cells": int(A.n_obs), "batch_key": a.batch_key,
-               "input": str(a.h5ad),
+               "input": str(a.h5ad), "species": D["species"], "assay": D["assay"],
+               "unit": D["unit"],
                "label_key": a.label_key, "k": a.k, "n_pcs": a.n_pcs, "seed": a.seed,
                "design": D["design_note"], "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "celltypes": _plainrows(rows),
                "dominance": dom, "summary": summ,
                "figures": [{"name": n, "path": str(Path(p).name), "caption": c}
                            for n, p, c in figs]}
-    _write_json(out, payload)
+    payload = _write_json(out, payload)      # the version and the time reach the document too
     from .report import write_assess
     p = write_assess(out, payload, figs)
     print(f"\nwrote {p}")
@@ -323,8 +359,7 @@ def _integrate(a):
     try:
         D = _load(a)
     except inputs.Refuse as e:
-        print(f"scintegrate: REFUSE - {e}", file=sys.stderr)
-        return REFUSE
+        return _refuse(a, e)
     A = D["adata"]
     out = Path(a.out)
     (out / "tables").mkdir(parents=True, exist_ok=True)
@@ -385,9 +420,7 @@ def _integrate(a):
         ok = ["none"] + [m for m in ok if m != "none"]
     for m in ok:
         if m in ME.NEEDS_COUNTS and not D["counts_ok"]:
-            print(f"scintegrate: REFUSE - {m} models raw counts and {D['counts_note']}",
-                  file=sys.stderr)
-            return REFUSE
+            return _refuse(a, f"{m} models raw counts and {D['counts_note']}")
     print(f"\nmethods: {', '.join(ok)}")
     for k, v in missing.items():
         print(f"  NOT compared - {k}: {v}")
@@ -589,7 +622,7 @@ def _integrate(a):
     summ = AS.summarise(arows, indicates_below=a.indicates_below)
     print("  " + summ["indication"])
 
-    constraint = _constraint(D, a, chosen)
+    constraint, conf = _constraint(D, a, chosen)
 
     # ---- figures
     views = _views(results, a.seed, a.min_dist)
@@ -597,7 +630,7 @@ def _integrate(a):
     figs += _draw_assessment(out, arows, list(D["factors"]), a)
 
     # ---- tables
-    _assessment_tables(out, arows, dom, a)
+    _assessment_tables(out, arows, dom)
     if D["sentinels"]:
         _sentinel_tables(out, D, a)
     allm = sorted({k for r in results for k in r["metrics"]})
@@ -636,6 +669,7 @@ def _integrate(a):
             "wrapped_versions": {p_: v_ for c_ in ENV.probe().values() for p_, v_ in c_["have"].items() if v_},
             "sees": {m_: ME.sees(m_) for m_ in ok},
             "input": str(a.h5ad), "umap_min_dist": a.min_dist,
+            "species": D["species"], "assay": D["assay"],
             "batch_key": a.batch_key,
             "label_key": a.label_key, "l1_key": a.l1_key or "", "seed": a.seed,
             "k": a.k, "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
@@ -652,7 +686,7 @@ def _integrate(a):
         print("\n  ! " + chosen["supervision_caveat"])
     if D.get("drop_note"):
         constraint = (constraint or "") + "\n\nWITHHELD FROM THE INTEGRATION: " + D["drop_note"] \
-            + " Their per-arm rate is tables/integration_withheld_by_arm.csv. No embedding here " \
+            + ". Their per-arm rate is tables/integration_withheld_by_arm.csv. No embedding here " \
               "describes them, and any count taken over an embedding excludes them by " \
               "construction."
     bench = {"aggregate": {r["method"]: r["aggregate"] for r in results},
@@ -678,7 +712,8 @@ def _integrate(a):
     print(f"  obsm: {_names(obj.obsm)}")
 
     payload = {"command": "integrate", "n_cells": int(A.n_obs), "n_genes": int(A.n_vars),
-               "input": str(a.h5ad),
+               "input": str(a.h5ad), "species": D["species"], "assay": D["assay"],
+               "unit": D["unit"],
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
                "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
                "umap_min_dist": a.min_dist, "umap_n_neighbors": FIG.N_NEIGHBORS,
@@ -695,13 +730,17 @@ def _integrate(a):
                             "knn": {k: v for k, v in r["knn"].items() if k != "_per_cell"}}
                            for r in results],
                "not_compared": missing, "chosen": chosen, "constraint_on_use": constraint,
+               "confounding": conf,
                "alt_rankings": alt_rankings,
                "withheld_from_integration": D.get("drop_note") or "",
                "celltypes": _plainrows(arows), "dominance": dom, "summary": summ,
                "object": str(op), "metric_meaning": BM.MEANING,
                "figures": [{"name": n, "path": str(Path(p).name), "caption": c}
                            for n, p, c in figs]}
-    _write_json(out, payload)
+    # The payload AS WRITTEN, with its version and time. The documents were built from the dict
+    # before `_write_json` added them, so every README a run wrote began "Written by scintegrate
+    # None on None" and the report's header said "scintegrate None · generated None".
+    payload = _write_json(out, payload)
     from .report import write_integrate
     p = write_integrate(out, payload, figs)
     print(f"\nwrote {p}")
@@ -715,33 +754,55 @@ def _integrate(a):
     return 0
 
 
+def _shape(f, c, batch_key):
+    """One factor's place in the design, in the design's own names and counts."""
+    lv = c.get("batches_per_level") or {}
+    shown = ", ".join(f"{k} on {n}" for k, n in list(lv.items())[:6]) + (", ..." if len(lv) > 6 else "")
+    if c["status"] == "aliased":
+        return (f"{f} and {batch_key} split the cells identically - each of the {len(lv)} values "
+                f"of {f} is exactly one level of {batch_key}")
+    return (f"{f} takes one value in every level of {batch_key} - {len(lv)} values over "
+            f"{sum(lv.values())} levels ({shown})")
+
+
 def _constraint(D, a, chosen):
-    """What the chosen embedding may and may not carry. Computed, not boilerplate.
+    """What the chosen embedding may and may not carry, and the classification it rests on.
+    Computed from THIS design, not recited.
 
     A factor that varies only BETWEEN batches cannot be separated from the batch by any
     correction on the batch key. That is a property of the design, present before any method
     runs, and it does not stop a default embedding being named - it decides what the embedding
     is allowed to be used for afterwards.
+
+    WORDED FROM THE DESIGN, NOT FROM A COHORT. This sentence used to call the nesting "the
+    ordinary structure of a design with one library per animal" on every cohort - true of the
+    study the tool was built against, and a guess about every other. Nothing in a design table
+    says what a library is, or whether the samples came from animals, donors or organoids; what
+    it does say - which factor is constant within which batch, over how many levels - is what is
+    written here.
     """
     from .metrics import confounding
     if not D["factors"]:
         return ("No biological factor was declared (--design / --bio-factor), so nothing here "
                 "constrains use. Declaring the factors the study is about is what lets this "
-                "section say something.")
+                "section say something."), {}
     conf = confounding(D["adata"].obs.assign(**{f: v for f, v in D["factors"].items()}),
                        a.batch_key, list(D["factors"]))
     nested = [f for f, c in conf.items() if c["status"] in ("nested", "aliased")]
+    aliased = [f for f, c in conf.items() if c["status"] == "aliased"]
     sep = [f for f, c in conf.items() if c["status"] == "separable"]
     if not nested:
         return (f"Every declared factor ({', '.join(sep)}) varies WITHIN at least one "
                 f"{a.batch_key}, so it is separable from the batch key and a correction on that "
-                f"key does not remove it by construction.")
+                f"key does not remove it by construction."), conf
     return (
+        f"In this design {'; '.join(_shape(f, conf[f], a.batch_key) for f in nested)}. So "
         f"{', '.join(nested)} vary only BETWEEN levels of {a.batch_key}, never within one. That "
-        f"is the ordinary structure of a design with one library per animal, and it is not a "
-        f"defect - but it means a correction on {a.batch_key} necessarily reduces the contrast "
-        f"in {', '.join(nested)} along with the batch effect, and no measurement taken after the "
-        f"correction can separate them again.\n\n"
+        f"is a property of the design, present before any method ran, and it is not a defect - "
+        f"but a correction on {a.batch_key} necessarily reduces the contrast in "
+        f"{', '.join(nested)} along with the batch effect"
+        + (f", and can remove it entirely for {', '.join(aliased)}" if aliased else "")
+        + f", and no measurement taken after the correction can separate them again.\n\n"
         f"So: the chosen embedding"
         + (f" (X_{chosen['default']})" if chosen.get("default") else "")
         + " may carry visualisation, clustering and cell-type identification. It must NOT carry "
@@ -749,7 +810,7 @@ def _constraint(D, a, chosen):
           f"uncorrected X_pca and say so, or a test that models the factor rather than removing "
           f"it. Differential expression on per-sample counts is unaffected: it reads "
           f"layers['counts'], which no correction here touches."
-        + (f"  Separable, and therefore unconstrained: {', '.join(sep)}." if sep else ""))
+        + (f"  Separable, and therefore unconstrained: {', '.join(sep)}." if sep else "")), conf
 
 
 # -------------------------------------------------------------------------------------- draw
@@ -843,7 +904,7 @@ def _draw_assessment(out, rows, fnames, a):
 # ------------------------------------------------------------------------------------- score
 
 def _score(a):
-    """Re-run the benchmark against an object that ALREADY holds the embeddings.
+    """Re-run the scIB benchmark against an object that ALREADY holds the method results.
 
     WHY THIS EXISTS. `integrate` trains the models, and on a cohort that is hours of CPU. The
     benchmark that runs afterwards depends on things that have nothing to do with the models - a
@@ -851,17 +912,27 @@ def _score(a):
     make a metric disappear. Without this command, repairing such a metric means retraining scVI
     and scANVI to compute a number that never depended on them.
 
-    So the embeddings are the expensive artefact and they are kept: this reads them back out of
-    `obsm`, re-scores, and rewrites the tables, the report and the object's own `uns`. Nothing is
-    retrained and no embedding changes.
+    So the expensive artefacts are kept, and this reads them back: each `embed`-kind method's
+    coordinates from `obsm['X_<method>']`, and each `graph`-kind method's corrected neighbour graph
+    from `obsp['<method>_connectivities']` and `obsp['<method>_distances']`. Reading obsm alone,
+    as this did, dropped BBKNN - whose result IS its graph - from the re-scored ranking without a
+    word, and then rewrote the winner in report.json over a ranking it was missing from.
+
+    It rewrites `tables/scib_*.csv` and, where `--out` holds the run's report.json, the ranking and
+    the metrics in it, and then rebuilds `reports/integration.html` and `README.md` from that file.
+    Nothing is retrained and no embedding or graph changes. The tool's own kNN metrics need no
+    external package and are not re-scored.
+
+    THE OBJECT IS NOT REWRITTEN. It is this command's input and may sit in a sealed run directory,
+    so `uns['scintegrate']['benchmark']` keeps the scores of the run that wrote it; report.json
+    records that (`object_rescored: false`), and so does the run's output.
     """
-    from . import benchmark as BM, emit, inputs, methods as ME
+    from . import benchmark as BM, inputs, methods as ME
     import numpy as np
     try:
         D = _load(a)
     except inputs.Refuse as e:
-        print(f"scintegrate: REFUSE - {e}", file=sys.stderr)
-        return REFUSE
+        return _refuse(a, e)
     A = D["adata"]
     out = Path(a.out)
 
@@ -869,49 +940,60 @@ def _score(a):
               and not k.startswith("X_umap") and k != "X_pca"}
     if "none" not in stored and "X_pca" in A.obsm:
         stored = {"none": "X_pca", **stored}
-    if not stored:
-        print("scintegrate: REFUSE - this object holds no method embeddings. `score` re-scores "
-              "an object written by `integrate`; it does not create one. obsm has: "
-              + ", ".join(A.obsm), file=sys.stderr)
-        return REFUSE
-    order = (["none"] + [m for m in ME.METHODS if m in stored and m != "none"]
-             + [m for m in stored if m not in ME.METHODS])
-    order = [m for m in dict.fromkeys(order) if m in stored]
-    print(f"\nre-scoring {len(order)} stored embedding(s): {', '.join(order)}")
-    print("  nothing is retrained; these are the embeddings already in the object")
+    # A GRAPH METHOD'S RESULT IS ITS GRAPH, written by `integrate` as a connectivities/distances
+    # pair under the method's name. The input's own unprefixed `connectivities` is not a method.
+    graphs = {k[:-len("_connectivities")]: k for k in A.obsp
+              if k.endswith("_connectivities")
+              and f"{k[:-len('_connectivities')]}_distances" in A.obsp
+              and k[:-len("_connectivities")] not in stored}
+    if not stored and not graphs:
+        return _refuse(a, "this object holds no method embeddings and no method graphs. `score` "
+                          "re-scores an object written by `integrate`; it does not create one. "
+                          "obsm has: " + ", ".join(A.obsm))
+    found = {**stored, **graphs}
+    order = (["none"] + [m for m in ME.METHODS if m in found and m != "none"]
+             + [m for m in found if m not in ME.METHODS])
+    order = [m for m in dict.fromkeys(order) if m in found]
+    print(f"\nre-scoring {len(order)} stored result(s): "
+          + ", ".join(f"{m} ({'graph, obsp' if m in graphs else 'embedding, obsm'})" for m in order))
+    print("  nothing is retrained; these are the embeddings and graphs already in the object")
 
     real = D["is_real"]
     n_drop = int((~real).sum())
     if n_drop:
         print(f"  scIB on the {int(real.sum()):,} cells with a real label; {n_drop:,} sentinel "
               f"cells excluded from the METRICS only")
-    obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
 
-    # Cells withheld from the integration carry NaN in every embedding (`--drop-labels`); they
-    # are excluded from the metrics exactly as sentinel cells are, and counted.
+    # Cells withheld from the integration carry NaN in every embedding (`--drop-labels`) and are
+    # isolated vertices in every graph; they are excluded from the metrics exactly as sentinel
+    # cells are, and counted.
     _nan = np.zeros(A.n_obs, dtype=bool)
     for m in order:
-        _nan |= np.isnan(np.asarray(A.obsm[stored[m]], dtype="float64")).any(axis=1)
+        if m in stored:
+            _nan |= np.isnan(np.asarray(A.obsm[stored[m]], dtype="float64")).any(axis=1)
     if _nan.any():
         print(f"  {int(_nan.sum()):,} cells carry NaN embeddings (withheld from the integration); "
               f"excluded from the METRICS only")
         real = real & ~_nan
-        obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
+    obs_sub = A.obs.loc[real, [a.batch_key, a.label_key]]
+    _res = ([round(x, 3) for x in np.linspace(0.1, 2.0, int(a.scib_resolutions))]
+            if a.scib_resolutions else None)
     results, A_pre = [], None
     for m in order:
         print(f"  {m} ...", flush=True)
-        emb = np.asarray(A.obsm[stored[m]])[real]
-        r = {"method": m, "kind": ME.kind(m) if m in ME.METHODS else "embed",
-             "emb": np.asarray(A.obsm[stored[m]]),
-             "umap": (np.asarray(A.obsm[f"X_umap_{m}"]) if f"X_umap_{m}" in A.obsm else None),
-             "note": f"read from obsm[{stored[m]!r}] - not recomputed"}
-        Ai = BM.prepare(emb, None, obs_sub, a.batch_key, a.label_key, kind="embed", seed=a.seed)
+        if m in graphs:
+            g = _stored_graph(A, m, a.n_pcs)[real].copy()
+            r = {"method": m, "kind": "graph",
+                 "note": f"read from obsp[{graphs[m]!r}] - not recomputed"}
+            Ai = BM.prepare(None, g, obs_sub, a.batch_key, a.label_key, kind="graph", seed=a.seed)
+        else:
+            r = {"method": m, "kind": ME.kind(m) if m in ME.METHODS else "embed",
+                 "note": f"read from obsm[{stored[m]!r}] - not recomputed"}
+            Ai = BM.prepare(np.asarray(A.obsm[stored[m]])[real], None, obs_sub, a.batch_key,
+                            a.label_key, kind="embed", seed=a.seed)
         if A_pre is None:
             A_pre = Ai
-        _res = ([round(x, 3) for x in __import__("numpy").linspace(
-                    0.1, 2.0, int(a.scib_resolutions))]
-                if a.scib_resolutions else None)
-        r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind="embed",
+        r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind=r["kind"],
                                 n_cores=a.n_cores, lisi_subsample=a.lisi_subsample,
                                 resolutions=_res,
                                 fast_leiden=not a.no_fast_leiden)
@@ -924,12 +1006,10 @@ def _score(a):
             ag["n_bio"], ag["of_bio"], ag["n_batch"], ag["of_batch"]))
         for k, why in ag["absent"].items():
             print(f"      absent: {k} - {why}")
-        from .metrics import assess as knn_assess
-        base = np.asarray(A.obsm[stored[order[0]]])
-        r["knn"] = knn_assess(base, r["emb"], D["batch"], D["label"], k=a.k)
         results.append(r)
 
     chosen = BM.choose_default(results)
+    chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
     print("")
     if chosen["default"]:
         print(f"  DEFAULT EMBEDDING: X_{chosen['default']}   (scIB total {chosen['total']:.4f})")
@@ -957,8 +1037,6 @@ def _score(a):
            r["aggregate"]["n_batch"], r["aggregate"]["of_batch"],
            "YES" if r["method"] == chosen["default"] else ""] for r in results])
     print(f"\nrewrote {out}/tables/scib_*.csv")
-    # AND report.json, so `scintegrate report` rebuilds from the re-scored numbers rather than
-    # the stale ones. The docstring promised this; the code only wrote tables.
     rp = out / "report.json"
     if rp.exists():
         try:
@@ -973,12 +1051,50 @@ def _score(a):
                     entry["aggregate"] = {k: v for k, v in r["aggregate"].items() if k != "absent"}
                     entry["sees"] = ME.sees(r["method"])
             payload["rescored"] = True
+            payload["object_rescored"] = False
             rp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
             print(f"      {rp} (chosen and metrics rewritten)")
+            for line in _rebuild(out, payload):
+                print(f"      {line}")
         except (OSError, ValueError) as e:
             print(f"      report.json NOT rewritten: {e}", file=sys.stderr)
-    print("Re-run `scintegrate report --out` to rebuild the document from these.")
+    else:
+        print(f"      no {rp}: nothing else to rewrite. The re-scored numbers are the tables above.")
+    print(f"  the object itself is NOT rewritten: {a.h5ad} is this command's input, and its "
+          f"uns['scintegrate']['benchmark'] still holds the scores of the run that wrote it")
     return 0
+
+
+def _stored_graph(A, m, n_pcs):
+    """A graph method's result, rebuilt from the object into the shape scIB scores.
+
+    The same shape `integrate` scores: the method's own connectivities and distances, recorded as
+    the neighbour graph, and the uncorrected PCA on the same components the method read, which is
+    what `benchmark.prepare` puts in X_emb for a graph method.
+
+    `n_neighbors` is carried because scanpy reads it from any existing graph before a metric that
+    builds its own replaces it - without it isolated_labels_f1 was absent here and present in the
+    run being re-scored. It is the method's recorded setting where the object carries one (BBKNN:
+    neighbors_within_batch x n_batches), and no metric's value depends on it.
+    """
+    import anndata as ad
+    import numpy as np
+    G = ad.AnnData(X=np.zeros((A.n_obs, 1), dtype="float32"))
+    G.obs_names = list(A.obs_names.astype(str))
+    pca = np.asarray(A.obsm["X_pca"])
+    G.obsm["X_pca"] = pca[:, :min(n_pcs, pca.shape[1])]
+    G.obsp["connectivities"] = A.obsp[f"{m}_connectivities"]
+    G.obsp["distances"] = A.obsp[f"{m}_distances"]
+    settings = (((A.uns.get("scintegrate") or {}).get("provenance") or {})
+                .get("method_settings") or {}).get(m) or {}
+    try:
+        k = int(settings["neighbors_within_batch"]) * int(settings["n_batches"])
+    except (KeyError, TypeError, ValueError):
+        dist = G.obsp["distances"].tocsr()
+        k = int(np.diff(dist.indptr).max()) + 1 if dist.shape[0] else 1
+    G.uns["neighbors"] = {"connectivities_key": "connectivities", "distances_key": "distances",
+                          "params": {"n_neighbors": k, "method": "umap", "use_rep": "X_pca"}}
+    return G
 
 
 # ------------------------------------------------------------------------------------ report
@@ -989,16 +1105,22 @@ def _report(a):
     if not p.exists():
         print(f"scintegrate: REFUSE - no {p}. Run assess or integrate first.", file=sys.stderr)
         return REFUSE
-    payload = json.loads(p.read_text())
+    for i, line in enumerate(_rebuild(out, json.loads(p.read_text()))):
+        print(f"{'wrote ' if i == 0 else '      '}{line}")
+    return 0
+
+
+def _rebuild(out, payload):
+    """The documents, rebuilt from report.json. Returns the paths written."""
     figs = [(f["name"], out / "figures" / f["path"], f["caption"])
             for f in payload.get("figures", [])]
     from .report import write_assess, write_integrate
     w = write_integrate if payload.get("command") == "integrate" else write_assess
-    print(f"wrote {w(out, payload, figs)}")
+    done = [w(out, payload, figs)]
     if payload.get("command") == "integrate":
         from .readme import write_readme
-        print(f"      {write_readme(out, payload)}")
-    return 0
+        done.append(write_readme(out, payload))
+    return done
 
 
 # --------------------------------------------------------------------------------------- main
@@ -1009,6 +1131,23 @@ def _common(s):
     s.add_argument("--batch-key", default="sample")
     s.add_argument("--label-key", required=True,
                    help="the annotation column scored and coloured by")
+    # NO DEFAULT. A default species is the first cohort's species carried onto every other.
+    s.add_argument("--species", required=True, metavar="SPECIES",
+                   help="the species the cells came from, as Ensembl writes it (homo_sapiens, "
+                        "mus_musculus, ...; the common names human, mouse, ... are read the same "
+                        "way). CHECKED against the object: where var carries Ensembl gene "
+                        "identifiers and they name another species, the run is refused, naming "
+                        "both. Without identifiers only the symbol case can be read, which is a "
+                        "convention and is reported as a note")
+    # OPTIONAL, AND NEVER DEFAULTED. No rule in this tool depends on the assay (axes.ASSAY_RULES
+    # is empty), so requiring it would ask for an answer that changes nothing; absent, the run
+    # records "not declared" rather than a guess.
+    s.add_argument("--assay", default=None, choices=list(axes.ASSAYS),
+                   help="scrna (single cells) or snrna (single nuclei). Recorded in the run's "
+                        "provenance and wording, and recorded as 'not declared' when absent. No "
+                        "parameter, threshold or method here depends on it - cells and nuclei are "
+                        "integrated and scored by the same rules - and a count matrix cannot show "
+                        "which it holds, so it is not checked")
     s.add_argument("--l1-key", default=None,
                    help="a MEASURED coarse-level column, if the annotation ships one. Used for "
                         "the cell-type figure. Without it the full label is used; the path is "
@@ -1070,7 +1209,9 @@ def _common(s):
                         "A DECLARED threshold, not a discovered one (default 0.80)")
 
 
-def main(argv=None):
+def parser():
+    """The command line, built without running anything - so a test can hold every documented
+    example to it."""
     from . import __version__
     ap = argparse.ArgumentParser(prog="scintegrate", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1117,7 +1258,8 @@ def main(argv=None):
     g.set_defaults(fn=_integrate)
 
     sc_ = sub.add_parser("score", help="re-run the benchmark on an object that already holds "
-                                      "the embeddings - nothing is retrained")
+                                      "the embeddings and graphs - nothing is retrained, and "
+                                      "the object is not rewritten")
     _common(sc_)
     sc_.add_argument("--w-bio", type=float, default=0.6, metavar="W")
     sc_.add_argument("--n-cores", type=int, default=1)
@@ -1133,7 +1275,11 @@ def main(argv=None):
     d = sub.add_parser("describe", help="what this tool declares: needs, provides, sees per method, "
                                         "cannot_show, state_version (JSON)")
     d.set_defaults(fn=_describe)
+    return ap
 
+
+def main(argv=None):
+    ap = parser()
     a = ap.parse_args(argv)
     if not getattr(a, "fn", None):
         ap.print_help()
@@ -1159,8 +1305,24 @@ def _describe(a):
          "sees": {m: ME.sees(m) for m in ME.METHODS},
          "methods": {m: {"kind": ME.METHODS[m][1], "sees": ME.sees(m)} for m in ME.METHODS},
          "baseline_first": "none",
-         "gates": {"confounding": "a factor aliased with the batch key vetoes any claim across it",
+         # A GATE HERE REFUSES THE RUN. Confounding refuses nothing - metrics.confounding
+         # classifies, a default embedding is still named, and what nesting decides is written
+         # as the constraint on use - so it is declared as a constraint, not as a gate.
+         "gates": {"species": "a declared --species that the object's Ensembl gene identifiers "
+                              "contradict refuses the run, naming both",
                    "counts": "a method that models counts refuses a normalised matrix"},
+         "constraints": {"confounding": "a declared factor nested in, or aliased with, the batch "
+                                        "key is CLASSIFIED, never vetoed: a default embedding is "
+                                        "still named, and the report's constraint on use bars a "
+                                        "composition or abundance claim across that factor from "
+                                        "the corrected embedding - visualisation, clustering and "
+                                        "cell-type identification remain, and differential "
+                                        "expression on layers['counts'] is unaffected"},
+         "axes": {"species": {"required": True, "checked": "against Ensembl gene identifiers in "
+                                                         "var, where the object carries them"},
+                  "assay": {"required": False, "accepted": list(axes.ASSAYS),
+                            "rules_that_differ": sorted(axes.ASSAY_RULES) or "none",
+                            "absent_is_recorded_as": "not declared"}},
          "escapes": [{"what": "withholding labels from the integration", "how": "--drop-labels",
                       "recorded": "report.json withheld_from_integration and tables/integration_withheld_by_arm.csv"}],
          "cannot_show": CANNOT_SHOW,
@@ -1191,16 +1353,24 @@ def _with_status(a, argv):
                   expected=expected)
         raise
     if rc == REFUSE:
-        ST.finish(out, status="refused", exit_code=rc, headline="refused: see the message above",
-                  refusal={"reason": "refused before or during the run; the message names it",
+        why = getattr(a, "refusal", None)
+        ST.finish(out, status="refused", exit_code=rc,
+                  headline=f"refused: {why[:300]}" if why else "refused: see the message above",
+                  refusal={"reason": why or "refused before or during the run; the message names it",
                            "fix": "change the input the refusal names, or the flag it asks for"})
     else:
+        from . import env as ENV
+        # The packages this interpreter actually holds, measured by the stdlib-only probe - the
+        # same record the object's provenance carries. STATUS.json declared the field and
+        # always wrote it empty.
         ST.finish(out, status="ok" if rc == 0 else "failed", exit_code=rc,
                   headline={"integrate": "every method compared and the object written",
                             "assess": "the question measured; nothing integrated",
-                            "score": "stored embeddings re-scored"}.get(a.cmd, "done"),
+                            "score": "stored results re-scored"}.get(a.cmd, "done"),
                   expected=expected, inputs=[{"path": str(getattr(a, "h5ad", ""))}],
-                  sees={m: ME.sees(m) for m in ME.METHODS})
+                  sees={m: ME.sees(m) for m in ME.METHODS},
+                  wrapped_versions={p_: v_ for c_ in ENV.probe().values()
+                                    for p_, v_ in c_["have"].items() if v_})
     return rc
 
 

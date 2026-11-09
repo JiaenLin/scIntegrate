@@ -5,7 +5,7 @@ Five commands, in the order the questions actually arrive:
     scintegrate doctor      what is installed, and what each absence costs you
     scintegrate assess      is integration needed? per cell type and per group, nothing trained
     scintegrate integrate   run the methods, score with scIB, name a default, write one object
-    scintegrate score       re-score an object that already holds the embeddings - no retraining
+    scintegrate score       re-score an object that already holds the results - no retraining
     scintegrate report      rebuild the document from report.json
 
 It compares methods INCLUDING doing nothing, measures every correction against what it cost in

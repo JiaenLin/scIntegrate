@@ -39,22 +39,37 @@ install rather than composed from bounds.
 ## Run
 
 ```bash
-scintegrate assess    --h5ad joint.h5ad --out results/ \
+scintegrate assess    --h5ad joint.h5ad --out results/ --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --design design.csv
 
-scintegrate integrate --h5ad joint.h5ad --out results/ \
+scintegrate integrate --h5ad joint.h5ad --out results/ --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --design design.csv \
     --colour-by cell_type,cell_type_forced,cell_compartment \
     --methods none,harmony,bbknn,scvi,scanvi
 
 scintegrate score     --h5ad results/objects/cohort_integrated.h5ad --out results/ \
-    --batch-key sample --label-key cell_type
+    --species homo_sapiens --batch-key sample --label-key cell_type
 ```
 
 `assess` answers whether integration is needed without training anything. `integrate` runs the
 methods, scores them with scIB, names a default embedding, and writes one object holding every
 embedding beside the counts they came from. `score` re-runs the benchmark against an object that
-already holds the embeddings — nothing is retrained.
+already holds the embeddings and graphs — nothing is retrained, and the object is not rewritten:
+it rewrites the tables and `report.json` and rebuilds the report from them.
+
+### Species and assay
+
+`--species` is **required** and has no default: a default species is the first cohort's species
+carried onto every other. It is written as Ensembl writes it (`homo_sapiens`, `mus_musculus`; the
+common names `human`, `mouse` are read the same way) and it is **checked against the object**:
+where `var` carries Ensembl gene identifiers and they name another species, the run is refused
+before anything is computed, naming both. Without identifiers only the symbol case can be read —
+a convention, reported as a note, never a refusal.
+
+`--assay` (`scrna` or `snrna`) is **optional**, because no parameter, threshold or method here
+depends on it: cells and nuclei are integrated and scored by the same rules, and a count matrix
+cannot show which it holds. It is recorded in the run's provenance and wording when given, and
+recorded as `not declared` when it is not — never guessed and never defaulted.
 
 The object is written **as soon as the embeddings exist**, complete but for the benchmark, then
 rewritten in place once the scores are there. A scoring failure costs the metrics, not the models.
@@ -106,7 +121,8 @@ objects/cohort_integrated.h5ad
     obsm['X_umap_<m>']    one 2-D view per method
     obsm['X_umap']        a copy of the chosen view
     obs                   the batch key, the label columns, the declared design factors
-    uns['scintegrate']    the benchmark, the chosen method, the constraint on use
+    uns['scintegrate']    the benchmark, the chosen method, the constraint on use, and the
+                          run's provenance - the species as declared and as checked, the assay
 ```
 
 `obs` is deliberately narrow: an object carrying fifty label columns from an upstream sweep makes
@@ -129,7 +145,8 @@ Four states are distinguishable from the filesystem alone, by a reader who did n
 | `FAILED.txt` | anything else | names what is missing |
 
 `scintegrate describe` prints the declaration — needs, provides, what each method was shown
-(`sees`: only scANVI sees the labels), gates, `cannot_show`, `state_version` — as JSON. Every
+(`sees`: only scANVI sees the labels), the gates that refuse a run, the constraints that only
+classify, the species and assay axes, `cannot_show`, `state_version` — as JSON. Every
 ranking table and `report.json` carry `sees` beside each method, because a method trained on the
 label column is not sitting the same exam as one that was not.
 
@@ -150,10 +167,14 @@ pattern-matching a sample name.
 ## Tests
 
 ```bash
+python tests/run_all.py --jobs 4        # every suite, one process each; the exit code is the gate
 python tests/test_design.py             # the design locks; no data, no pytest needed
 python tests/test_methods_settings.py   # every documented setting matches the source
-python tests/test_colour_columns.py     # needs numpy and pandas
+python tests/test_cohort_axes.py        # a human scRNA cohort through the real CLI
 ```
+
+The leak guard, `tests/test_portability.py`, reads the cohort's forbidden words from the file
+named by `$SCINTEGRATE_FORBIDDEN_TERMS`, so this repository never spells them.
 
 ## Part of a family
 

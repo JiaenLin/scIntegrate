@@ -149,8 +149,29 @@ def _sentinels(payload):
             f"not.</div>")
 
 
+def _axes(payload):
+    """The species and assay rows: what was declared, and what the object could say back."""
+    sp = payload.get("species") or {}
+    asy = payload.get("assay") or {}
+    rows = []
+    if sp:
+        rows.append(("species", f"<code>{_esc(sp.get('as'))}</code> (declared "
+                                f"<code>{_esc(sp.get('declared'))}</code>) - {_esc(sp.get('verdict'))}: "
+                                f"{_esc(sp.get('basis'))}"
+                                + (f"; {_esc(sp.get('note'))}" if sp.get("note") else "")))
+    if asy:
+        rows.append(("assay", f"<code>{_esc(asy.get('declared'))}</code> - {_esc(asy.get('meaning'))}"))
+    return rows
+
+
+def _unit(payload):
+    """The word for one observation, as the run recorded it. Runs from before the record say cells."""
+    return payload.get("unit") or "cells"
+
+
 def _provenance(payload, extra=()):
     rows = [("input", f"<code>{_esc(payload.get('input') or payload.get('h5ad', ''))}</code>"),
+            *_axes(payload),
             ("batch key", f"<code>{_esc(payload.get('batch_key'))}</code>"),
             ("label key", f"<code>{_esc(payload.get('label_key'))}</code>"),
             ("coarse colouring", _esc(payload.get("coarse"))),
@@ -193,7 +214,7 @@ def write_assess(out_dir, payload, figs):
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Is integration needed?</title><style>{CSS}</style><main>
 <h1>Is integration needed?</h1>
-<p class="sub">{payload.get('n_cells', 0):,} cells · batch <code>{_esc(payload.get('batch_key'))}</code>
+<p class="sub">{payload.get('n_cells', 0):,} {_esc(_unit(payload))} · batch <code>{_esc(payload.get('batch_key'))}</code>
 · k={_esc(payload.get('k'))} · scintegrate {_esc(payload.get('version'))}
 · generated {_esc(payload.get('generated'))}</p>
 
@@ -355,7 +376,7 @@ def write_integrate(out_dir, payload, figs):
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Integration</title><style>{CSS}</style><main>
 <h1>Integration</h1>
-<p class="sub">{payload.get('n_cells', 0):,} cells × {payload.get('n_genes', 0):,} genes ·
+<p class="sub">{payload.get('n_cells', 0):,} {_esc(_unit(payload))} × {payload.get('n_genes', 0):,} genes ·
 batch <code>{_esc(payload.get('batch_key'))}</code> · k={_esc(payload.get('k'))} ·
 scintegrate {_esc(payload.get('version'))} · generated {_esc(payload.get('generated'))}</p>
 

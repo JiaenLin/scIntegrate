@@ -119,18 +119,27 @@ def confounding(obs, batch_key, bio_factors):
         per_batch = {lvl: set(v[b == lvl]) for lvl in set(b)}
         nested = all(len(s) == 1 for s in per_batch.values())
         aliased = nested and len(set(b)) == len(set(v))
+        # How many batch levels carry each value - the counts the constraint is worded from.
+        # Defined only where every batch carries one value; elsewhere a batch has several.
+        per_level = {}
+        if nested:
+            for s in per_batch.values():
+                (val,) = s
+                per_level[val] = per_level.get(val, 0) + 1
         out[f] = {
             "status": "aliased" if aliased else ("nested" if nested else "separable"),
             "levels": sorted(set(v))[:6],
+            "batches_per_level": dict(sorted(per_level.items())),
             "detail": (f"every {batch_key} carries exactly one {f}"
                        if nested else
                        f"{f} varies within at least one {batch_key}"),
         }
     return out
 
-# `confounding` classifies; it does not veto. A per-animal factor is NESTED inside a per-animal
-# batch key by construction - every animal has one age - so a veto keyed on nesting would fire on
-# every study of this shape and carry no information. What nesting actually decides is what the
-# corrected embedding may be used for AFTERWARDS, which cli._constraint writes and the report
-# prints as its own section. The distinction matters: `aliased` means the batch key IS the factor
-# at the same granularity, and there a correction on that key erases the contrast entirely.
+# `confounding` classifies; it does not veto. A factor measured once per sample is NESTED inside a
+# per-sample batch key by construction - each sample has one value of it - so a veto keyed on
+# nesting would fire on every study of this shape and carry no information. What nesting actually
+# decides is what the corrected embedding may be used for AFTERWARDS, which cli._constraint writes
+# and the report prints as its own section. The distinction matters: `aliased` means the batch key
+# IS the factor at the same granularity, and there a correction on that key erases the contrast
+# entirely.

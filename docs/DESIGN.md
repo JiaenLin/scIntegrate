@@ -52,15 +52,26 @@ The default is the **highest scIB total**: the mean of the biological-conservati
 written into the object, so the choice travels with the data instead of living in a filename.
 
 What that choice does **not** settle is what the embedding may then carry. A factor that varies only
-between libraries — one animal per library, so one age per library — cannot be separated from the
-library by any correction on the library key. That is the ordinary shape of a multi-animal design
-and not a defect, and it does not stop a default being named. It decides what comes next, and the
-report computes it from your design rather than reciting it:
+between libraries — each library carrying one value of it — cannot be separated from the library
+by any correction on the library key. That is a common shape for a design and not a defect, and it
+does not stop a default being named. It decides what comes next, and the report computes it from
+your design rather than reciting it — naming the factor, the batch key and the counts, and telling a
+factor **nested** in the batch key (several libraries per value, so the correction reduces the
+contrast) from one **aliased** with it (one library per value, so the correction can remove the
+contrast entirely):
 
-> …may carry visualisation, clustering and cell-type identification. It must **not** carry a
-> composition or abundance claim across `age` — for that, use the uncorrected `X_pca` and say so,
-> or a test that models the factor rather than removing it. Differential expression on per-sample
-> counts is unaffected: it reads `layers['counts']`, which no correction here touches.
+> In this design `condition` takes one value in every level of `library` — 2 values over 6 levels
+> (stimulated on 3, unstimulated on 3). … So: the chosen embedding may carry visualisation,
+> clustering and cell-type identification. It must **not** carry a composition or abundance claim
+> across `condition` — for
+> that, use the uncorrected `X_pca` and say so, or a test that models the factor rather than
+> removing it. Differential expression on per-sample counts is unaffected: it reads
+> `layers['counts']`, which no correction here touches.
+
+*The wording of a synthetic example, not a result.* Nothing in a design table says what a library
+is or where its samples came from, so the report says nothing about that either: an earlier version
+described every cohort's nesting as "a design with one library per animal", which was true of one
+study and a guess about every other.
 
 Two questions, answered separately, because the answer to one is not the answer to the other.
 

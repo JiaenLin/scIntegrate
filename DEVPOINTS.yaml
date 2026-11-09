@@ -15,10 +15,16 @@ tests:
 # `none` is always included: it is the baseline every method is measured against, and a fixture
 # run that omits it would score a method against nothing. One method plus the baseline keeps the
 # run to seconds on 2,000 cells.
+#
+# `--species` is required and has no default. The harness fixture's genes are human symbols
+# (sch/dev/fixture.py REAL_GENES) and it carries no gene identifiers, so the declaration can be
+# read only against the symbol case - which is what the run then records. The fixture declares no
+# assay - it is synthetic, neither cells nor nuclei - and the run records "not declared".
 fixture:
   command: ["{python}", "-m", "scintegrate.cli", "integrate",
             "--h5ad", "{observations}", "--out", "{out}",
             "--batch-key", "{role_sample}", "--label-key", "{role_cell_type}",
+            "--species", "homo_sapiens",
             "--methods", "none,{name}", "--n-cores", "1"]
   products: ["report.json"]
   timeout: 1800
@@ -40,7 +46,10 @@ points:
                    "a state_version in the run record it produces",
                    "the wrapped library's version in provenance"]
     example: harmony
-    tests: [tests/test_methods.py]
+    # The suites that hold a method to this point. tests/test_methods.py was named here and never
+    # existed; tests/test_statements_true.py now fails on any name in this file that does not.
+    tests: [tests/test_methods_settings.py, tests/test_design.py, tests/test_status_contract.py,
+            tests/test_cohort_axes.py, tests/test_score_reads_graphs.py]
     proves: >
       it runs on both fixture shapes, is scored beside `none`, declares what it sees, and pads
       withheld cells with NaN rather than zero

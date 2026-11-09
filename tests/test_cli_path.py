@@ -63,7 +63,8 @@ with tempfile.TemporaryDirectory() as td:
     buf = io.StringIO()
     with redirect_stdout(buf), redirect_stderr(buf):
         rc = cli.main(["integrate", "--h5ad", str(td / "in.h5ad"), "--out", str(out),
-                       "--label-key", "cell_type", "--methods", "none", "--k", "10", "--n-pcs", "20"])
+                       "--label-key", "cell_type", "--species", "homo_sapiens",
+                       "--methods", "none", "--k", "10", "--n-pcs", "20"])
     log = buf.getvalue()
     print("\nintegrate --methods none on 300 synthetic cells")
     check("exit 0", rc == 0, log[-1500:])
@@ -74,7 +75,12 @@ with tempfile.TemporaryDirectory() as td:
     check("sees recorded per method", st.get("sees_by_method", {}).get("scanvi") == ["labels"] and st["sees_by_method"].get("none") == [])
     rep = json.loads((out / "report.json").read_text())
     check("report.json methods carry sees", all("sees" in m for m in rep["methods"]))
-    check("wrapped versions recorded", "wrapped_versions" in (rep.get("provenance") or st) or True)
+    # Was `"wrapped_versions" in (...) or True`: a check that could not fail. STATUS.json carried
+    # the key and wrote it empty on every run, which is the claim the README made and the run did
+    # not keep - so the check now asks for the versions themselves.
+    wv = st.get("wrapped_versions") or {}
+    check("STATUS.json records the wrapped versions this interpreter holds",
+          all(wv.get(p) for p in ("numpy", "anndata", "scanpy")), wv)
     obj = ad.read_h5ad(out / "objects" / "cohort_integrated.h5ad")
     check("object preserves obs_names", list(obj.obs_names) == list(a.obs_names))
     check("object carries X_none", "X_none" in obj.obsm)
@@ -88,17 +94,20 @@ with tempfile.TemporaryDirectory() as td:
     buf = io.StringIO()
     with redirect_stdout(buf), redirect_stderr(buf):
         rc = cli.main(["assess", "--h5ad", str(td / "in.h5ad"), "--out", str(td / "assess"),
-                       "--label-key", "cell_type", "--k", "10", "--n-pcs", "20"])
+                       "--label-key", "cell_type", "--species", "homo_sapiens",
+                       "--k", "10", "--n-pcs", "20"])
     check("assess exits 0 and seals", rc == 0 and (td / "assess" / "SEALED.txt").exists(), buf.getvalue()[-800:])
 
     print("\na refusal is a status, not a traceback")
     buf = io.StringIO()
     with redirect_stdout(buf), redirect_stderr(buf):
         rc = cli.main(["assess", "--h5ad", str(td / "in.h5ad"), "--out", str(td / "refused"),
-                       "--label-key", "no_such_column"])
+                       "--label-key", "no_such_column", "--species", "homo_sapiens"])
     st = json.loads((td / "refused" / "STATUS.json").read_text())
     check("exit 2, STATUS refused with a fix, FAILED.txt", rc == 2 and st["status"] == "refused"
           and st["refusal"]["fix"] and (td / "refused" / "FAILED.txt").exists(), buf.getvalue()[-400:])
+    check("and STATUS.json names the reason, not only the terminal",
+          "no_such_column" in (st["refusal"].get("reason") or ""), st.get("refusal"))
 
 print(f"\n{'PASS' if not FAILED else 'FAIL'}: {len(FAILED)} failing")
 sys.exit(1 if FAILED else 0)

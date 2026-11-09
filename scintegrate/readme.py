@@ -35,6 +35,21 @@ def _tree(out):
     return "\n".join(lines)
 
 
+def _species(payload):
+    sp = payload.get("species") or {}
+    if not sp:
+        return "not recorded by the run that wrote this directory"
+    return (f"`{sp.get('as')}` (declared `{sp.get('declared')}`) - {sp.get('verdict')}: "
+            f"{sp.get('basis')}" + (f"; {sp.get('note')}" if sp.get("note") else ""))
+
+
+def _assay(payload):
+    asy = payload.get("assay") or {}
+    if not asy:
+        return "not recorded by the run that wrote this directory"
+    return f"`{asy.get('declared')}` - {asy.get('meaning')}"
+
+
 def write_readme(out_dir, payload):
     out = Path(out_dir)
     ch = payload.get("chosen") or {}
@@ -54,10 +69,12 @@ what is actually here.
 
 ## 1. What is this, and where did it come from?
 
-Integration of **{payload.get('n_cells', 0):,} cells × {payload.get('n_genes', 0):,} genes**,
+Integration of **{payload.get('n_cells', 0):,} {payload.get('unit') or 'cells'} × {payload.get('n_genes', 0):,} genes**,
 batched on `{payload.get('batch_key')}`, annotated by `{payload.get('label_key')}`.
 
 - **input**: `{payload.get('input') or payload.get('h5ad', '')}`
+- **species**: {_species(payload)}
+- **assay**: {_assay(payload)}
 - **produced by**: `scintegrate integrate`
 - **methods compared**: {', '.join(m['method'] for m in ms) or 'none'}
 - **methods NOT compared**: {', '.join(f"{k} ({v})" for k, v in (payload.get('not_compared') or {}).items()) or 'none'}

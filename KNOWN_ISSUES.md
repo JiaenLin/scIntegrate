@@ -100,8 +100,9 @@ is how they are kept distinct. Read it.
 The scIB total weighs cell-type conservation against batch mixing. It knows nothing about the
 factor your study is actually about.
 
-Where a biological factor varies only *between* batches — one library per animal, so one age per
-library — a correction on the batch key necessarily reduces that contrast too. The report computes
+Where a biological factor varies only *between* batches — each library carrying one value of it —
+a correction on the batch key necessarily reduces that contrast too, and where each value is a single
+library (the factor is aliased with the batch key) it can remove it entirely. The report computes
 this from your design and prints it as **Constraint on use**: the chosen embedding is for
 visualisation, clustering and cell-type identification, and not for a composition claim across the
 nested factor. Differential expression is unaffected, because it reads `layers['counts']`.

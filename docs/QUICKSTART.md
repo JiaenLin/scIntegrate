@@ -42,7 +42,7 @@ dropped, because a method missing from a comparison changes what the comparison 
 ## 1. Write the design table
 
 The factors your study is about are usually not in an annotated object — it carries the annotation,
-not the animal metadata. A CSV keyed on the batch:
+not the sample metadata. A CSV keyed on the batch:
 
 ```csv
 sample,treatment,timepoint,chemistry,batch
@@ -63,9 +63,15 @@ the cells it omits.
 
 ```bash
 scintegrate assess --h5ad joint.h5ad --out results/03_integrate \
+    --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
     --design design.csv --bio-factor condition --bio-factor timepoint
 ```
+
+`--species` is required, and is checked against the gene identifiers in the object before anything
+is measured: a species they contradict is refused, naming both. `--assay` (`scrna` or `snrna`) is
+optional — nothing here is computed differently for cells and nuclei — and is recorded as given, or
+as `not declared`.
 
 Nothing is trained and nothing is corrected. It measures mixing **inside each cell type** on the
 uncorrected embedding, and again for each declared factor:
@@ -93,6 +99,7 @@ next one is a decision rather than a default.
 
 ```bash
 scintegrate integrate --h5ad joint.h5ad --out results/03_integrate \
+    --species homo_sapiens --assay scrna \
     --batch-key sample --label-key cell_type --l1-key cell_compartment \
     --design design.csv --bio-factor condition --bio-factor timepoint \
     --methods none,harmony,bbknn,scvi,scanvi
@@ -141,11 +148,14 @@ The metrics depend on things the models do not: a pandas version, a compiled LIS
 
 ```bash
 scintegrate score --h5ad results/03_integrate/objects/cohort_integrated.h5ad \
-    --out results/03_integrate --batch-key sample --label-key cell_type
+    --out results/03_integrate --species homo_sapiens --batch-key sample --label-key cell_type
 ```
 
-It reads the embeddings out of `obsm`, re-scores, and rewrites `tables/scib_*.csv`. Then rebuild
-the document with `scintegrate report --out`.
+It reads each method's embedding out of `obsm` and each graph method's corrected graph out of
+`obsp`, re-scores them, rewrites `tables/scib_*.csv` and the ranking in `report.json`, and rebuilds
+`reports/integration.html` and `README.md` from that. It does **not** rewrite the object, which is
+its input: the object's `uns['scintegrate']['benchmark']` keeps the scores of the run that wrote it,
+and `report.json` says so (`object_rescored: false`).
 
 This works because **the object is written before scoring starts**, so even a run killed at the
 walltime leaves its embeddings on disk.

@@ -166,7 +166,7 @@ def prepare(emb, adata_graph, obs, batch_key, label_key, *, kind, seed=0, n_neig
 
 
 def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsample=None,
-          cluster_seed=0, resolutions=None, fast_leiden=True):
+          resolutions=None, fast_leiden=True):
     """Every scIB metric, each either a float or a stated absence.
 
     `A_pre` is the uncorrected object, needed only by PCR, which asks how much batch-explained

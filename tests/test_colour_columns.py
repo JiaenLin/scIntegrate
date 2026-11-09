@@ -43,20 +43,20 @@ def main():
 
     print("\nexplicit --colour-by")
     cols, why = inputs.colour_columns(
-        obs, ["fine", "fine_forced", "coarse", "coarse_forced"], "sample", "fine", "coarse")
+        obs, ["fine", "fine_forced", "coarse", "coarse_forced"], "fine", "coarse")
     check("all four columns kept, in order", cols == ["fine", "fine_forced", "coarse",
                                                       "coarse_forced"], str(cols))
     check("each records why it was chosen", all(c in why for c in cols))
 
     print("\ndefault when --colour-by is absent")
-    cols2, why2 = inputs.colour_columns(obs, [], "sample", "fine", "coarse")
+    cols2, why2 = inputs.colour_columns(obs, [], "fine", "coarse")
     check("falls back to the l1 and label keys", cols2 == ["coarse", "fine"], str(cols2))
     check("the fallback says how to draw more",
           any("--colour-by" in v for v in why2.values()), str(why2))
 
     print("\na column that is not there")
     try:
-        inputs.colour_columns(obs, ["nope"], "sample", "fine", "coarse")
+        inputs.colour_columns(obs, ["nope"], "fine", "coarse")
         check("refuses a column that does not exist", False, "it was accepted")
     except inputs.Refuse as e:
         check("refuses a column that does not exist", True)

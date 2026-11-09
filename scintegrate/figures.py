@@ -5,7 +5,7 @@ metrics alone. Every method is drawn, coloured by biological group and by librar
 SCALE, before anyone is asked to choose.
 
 The scale matters more than it sounds. "Sample-dominated clusters: 0" and "group structure
-removed: 69.4%" described one method accurately and gave no sense that its cells from one animal
+removed: 69.4%" described one method accurately and gave no sense that its cells from one sample
 had been scattered uniformly across the whole manifold - visible instantly in a figure. A number
 can say a population was mixed; only the picture distinguishes ALIGNED WITH ITS COUNTERPARTS
 from DISPERSED EVERYWHERE.
@@ -165,7 +165,7 @@ def mixing_bars(rows, factor_names, threshold, out):
     """Per cell type: how well the libraries mix inside it, beside each declared factor.
 
     The figure exists because the comparison is the finding and a table hides it. A cell type
-    whose libraries do not mix is batch structure. A cell type where the AGE GROUPS also do not
+    whose libraries do not mix is batch structure. A cell type where a FACTOR'S LEVELS also do not
     mix is the same structure wearing two names, and a correction on the library key removes the
     contrast the study is for. Side-by-side bars make that pairing visible; two columns of
     numbers do not.

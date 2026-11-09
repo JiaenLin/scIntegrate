@@ -133,7 +133,7 @@ def hvg_mask(A, key="highly_variable"):
     return None
 
 
-def colour_columns(obs, requested, batch_key, label_key, l1_key=None):
+def colour_columns(obs, requested, label_key, l1_key=None):
     """The obs columns the method panels are coloured by, and why each was chosen.
 
     An annotation now commonly ships SEVERAL label columns for the same cells - a fine level and
@@ -163,7 +163,7 @@ def colour_columns(obs, requested, batch_key, label_key, l1_key=None):
 
 
 def read(path, batch_key, label_key, l1_key=None, sentinels=DEFAULT_SENTINELS,
-         coarse_from_path=False, colour_by=None):
+         coarse_from_path=False):
     """Open the object and return it with everything the stage needs, or refuse by name."""
     import anndata as ad
     A = ad.read_h5ad(path)
@@ -190,8 +190,8 @@ def read_design(path, samples, sample_col=None):
     """Join a design table onto the batches present, or refuse and say which are unmatched.
 
     The factors a study is ABOUT are usually not in the annotated object - it carries the
-    annotation, not the animal metadata. They arrive here as a CSV keyed on the batch, which
-    keeps the tool general: deriving `age` by pattern-matching a sample name would bake one
+    annotation, not the sample metadata. They arrive here as a CSV keyed on the batch, which
+    keeps the tool general: deriving a factor by pattern-matching a sample name would bake one
     project's naming into a tool every other project has to work around.
 
     Returns (DataFrame indexed by sample, [factor names]).

@@ -38,6 +38,27 @@ stays in the object and in the deliverable.
 
 ---
 
+## Species and assay: declared, and what each one changes
+
+**The species changes no setting, and is checked.** `--species` is required: the run reads the
+Ensembl gene identifiers the object carries (the `var` column holding most of them, prefixes matched
+longest first, 90% agreement decisive) and refuses a declared species they contradict, naming both,
+before anything is computed. Without identifiers, only the case the symbols are written in can be
+read — a convention, reported as a note. The rule is the harness's `axes` probe, restated in
+`scintegrate/axes.py` so that this package runs without the harness.
+
+**The assay changes nothing here, and that is measured, not assumed.** No parameter on this page,
+no threshold (`--indicates-below`, `--min-per-k`, `--k`) and no scIB metric reads it: cells and
+nuclei are integrated and scored by the same rules. `axes.ASSAY_RULES` — the declaration of every
+rule that differs by assay — is empty. `tests/test_cohort_axes.py` integrates one object as
+`scrna`, as `snrna` and undeclared and finds every embedding, metric and table identical, and fails
+on any branch taken on the assay outside `axes.py`. So `--assay` is optional: recorded in the run's
+provenance and wording when given, recorded as `not declared` when not, and never defaulted. A rule
+that comes to depend on it is declared per assay in `ASSAY_RULES`, and `--assay` then becomes
+required — the same test holds the two together.
+
+---
+
 ## `none` — the baseline, and it is a method
 
 ```python
