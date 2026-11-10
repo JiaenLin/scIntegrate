@@ -4,11 +4,11 @@ STANDING INSTRUCTION, and the reason this module exists: no integration decision
 metrics alone. Every method is drawn, coloured by biological group and by library, AT THE SAME
 SCALE, before anyone is asked to choose.
 
-The scale matters more than it sounds. "Sample-dominated clusters: 0" and "group structure
-removed: 69.4%" described one method accurately and gave no sense that its cells from one sample
-had been scattered uniformly across the whole manifold - visible instantly in a figure. A number
-can say a population was mixed; only the picture distinguishes ALIGNED WITH ITS COUNTERPARTS
-from DISPERSED EVERYWHERE.
+The scale matters more than it sounds. "Sample-dominated clusters: 0" and a large "group
+structure removed" share described one method accurately and gave no sense that its cells from
+one sample had been scattered uniformly across the whole manifold - visible instantly in a
+figure. A number can say a population was mixed; only the picture distinguishes ALIGNED WITH ITS
+COUNTERPARTS from DISPERSED EVERYWHERE.
 """
 from __future__ import annotations
 import numpy as np

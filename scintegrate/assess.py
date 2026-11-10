@@ -66,11 +66,11 @@ def mixing_within(emb, factor, k=30):
 def per_celltype(emb, labels, batch, factors=None, k=30, min_per_k=3, is_real=None):
     """One row per cell type: how well the libraries mix inside it, and how well each factor does.
 
-    `min_per_k` guards a degenerate measurement. With k=30 inside a population of 47 cells the
-    neighbourhood is most of the population, so the foreign share approaches the composition
-    itself and the ratio approaches 1.0 whatever the geometry - a rare type would be reported as
-    perfectly mixed because it is small. Types below min_per_k * k cells are reported with their n
-    and no ratio, which is an absence a reader can see.
+    `min_per_k` guards a degenerate measurement. With k=30 inside a population of a few dozen
+    cells the neighbourhood is most of the population, so the foreign share approaches the
+    composition itself and the ratio approaches 1.0 whatever the geometry - a rare type would be
+    reported as perfectly mixed because it is small. Types below min_per_k * k cells are reported
+    with their n and no ratio, which is an absence a reader can see.
 
     `is_real` masks annotator sentinels (EXCLUDED / UNRESOLVED). They are not cell types and are
     reported separately rather than scored as populations.
