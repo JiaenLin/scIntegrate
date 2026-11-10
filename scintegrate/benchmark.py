@@ -42,16 +42,17 @@ MEANING = {
     "pcr": "how much batch-explained variance the correction removed (batch)",
 }
 
-#: How far iLISI and cLISI move between two executions of one run under `--lisi-subsample`.
-#: scIB's compiled LISI helper draws the subsample from std::random_device (knn_graph.cpp,
-#: `random_device rd; mt19937 gen(rd())`), so no seed passed here reaches it and every execution
-#: scores different cells. MEASURED, not estimated: the largest movement of each, for the two
-#: methods that train nothing (none, bbknn), between two executions at --lisi-subsample 50, on
-#: one cohort of about 1e5 observations (2026-11-09). One measurement; a different cohort or
-#: percentage has its own spread. Without --lisi-subsample scIB scores every observation and
-#: draws no subsample, so this does not apply. Stated beside the totals in the report, and in
-#: KNOWN_ISSUES.md.
-LISI_SUBSAMPLE_SPREAD = {"ilisi": 1.5e-4, "clisi": 2.6e-4, "at_percent": 50,
+#: How far iLISI and cLISI moved between two executions of one run under `--lisi-subsample`,
+#: which this tool accepted before 0.5.0. scIB's compiled LISI helper draws the subsample from
+#: std::random_device (knn_graph.cpp, `random_device rd; mt19937 gen(rd())`) and takes no seed, so
+#: every execution scored different cells. This tool no longer draws one (`_score` scores every
+#: cell), so this describes only a RECORD written with a subsample: a report.json carrying
+#: lisi_subsample 50, or one written before lisi_subsample was recorded. MEASURED, not estimated:
+#: the largest movements read in three comparisons at --lisi-subsample 50, for the methods that
+#: train nothing, on one cohort of about 1e5 observations (2026-11-09); the first comparison alone
+#: had given 1.5e-4 and 2.6e-4. A draw can move them further. Stated beside the totals in the
+#: report of such a record, and in KNOWN_ISSUES.md.
+LISI_SUBSAMPLE_SPREAD = {"ilisi": 1.9e-3, "clisi": 6.2e-4, "at_percent": 50,
                          "measured": "2026-11-09"}
 
 
@@ -177,23 +178,26 @@ def prepare(emb, adata_graph, obs, batch_key, label_key, *, kind, seed=0, n_neig
     return A
 
 
-def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, lisi_subsample=None,
-          resolutions=None, fast_leiden=True):
+def score(A_post, A_pre, batch_key, label_key, *, kind, n_cores=1, resolutions=None,
+          fast_leiden=True):
     """Every scIB metric, each either a float or a stated absence.
 
     `A_pre` is the uncorrected object, needed only by PCR, which asks how much batch-explained
     variance the correction removed and therefore cannot be computed from the result alone.
+
+    There is no subsample argument: iLISI and cLISI are scored on every cell (`_score` says why).
+    `n_cores` only splits scIB's LISI arithmetic across processes; no value depends on it.
     """
     import scib.metrics as M
     type_ = "knn" if kind == "graph" else "embed"
     out = {}
     with scib_pandas_compat(), scanpy_fast_leiden(fast_leiden):
         return _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out,
-                      n_cores, lisi_subsample, resolutions)
+                      n_cores, resolutions)
 
 
 def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores,
-           lisi_subsample, resolutions=None):
+           resolutions=None):
     """The body of `score`, called inside the shims."""
 
     # A `graph` method HAS NO CORRECTED COORDINATES, so every metric that reads one must be an
@@ -244,11 +248,21 @@ def _score(M, A_post, A_pre, batch_key, label_key, kind, type_, out, n_cores,
            lambda: M.isolated_labels_f1(A_post, label_key, batch_key, "X_emb",
                                         resolutions=resolutions, verbose=False),
            out)
+    # iLISI AND cLISI ON EVERY CELL, so they are the same in every execution (GAP-C67). scIB's
+    # compiled LISI helper can be asked to score a share of the cells, but it draws that share from
+    # std::random_device (knn_graph.cpp: `mt19937 gen(rd())`) and takes no seed, so no seed passed
+    # from here reaches it: under the --lisi-subsample this tool once had, iLISI moved by more than
+    # 1e-3 between two runs of one command on a 1e5-cell object. The helper skips a cell only when
+    # its draw from 1 to 100 exceeds the percentage, so at 100 - what `subsample=None` means - no
+    # draw skips one and the value does not depend on the draw. A seeded share would still need the
+    # helper on every cell (it cannot be told which) and scIB's own call path replaced, for half of
+    # the Python step; every cell costs about 9-11 s more per metric than half of them at 1e5 cells
+    # (KNOWN_ISSUES.md).
     _guard("clisi", lambda: M.clisi_graph(A_post, label_key, type_, use_rep="X_emb",
-                                         subsample=lisi_subsample, n_cores=n_cores), out)
+                                         subsample=None, n_cores=n_cores), out)
     _guard("graph_connectivity", lambda: M.graph_connectivity(A_post, label_key), out)
     _guard("ilisi", lambda: M.ilisi_graph(A_post, batch_key, type_, use_rep="X_emb",
-                                         subsample=lisi_subsample, n_cores=n_cores), out)
+                                         subsample=None, n_cores=n_cores), out)
     _guard("kbet", lambda: M.kBET(A_post, batch_key, label_key, type_, embed="X_emb"), out)
 
     if kind != "graph":

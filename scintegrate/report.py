@@ -263,38 +263,41 @@ def _sci(x):
 
 
 def _lisi_note(payload, ms):
-    """Which case this run's iLISI and cLISI are, read from what the run recorded (GAP-C14).
+    """Which case this run's iLISI and cLISI are, read from what the run recorded (GAP-C14, C67).
 
-    Under --lisi-subsample scIB draws the observations they are scored on from an unseeded source,
-    so these two metrics, and every total they enter, move between two executions of one command.
-    The spread was measured once and is declared in benchmark.LISI_SUBSAMPLE_SPREAD. It is said
-    HERE, under the totals, because the totals are where a reader compares methods. A run in which
-    neither metric was scored gets no sentence, because there is nothing on the page it describes.
+    This version scores them on every cell (benchmark._score) and records `lisi_subsample: null`,
+    so a run of it is the first case below, and the same in every execution on the same
+    embedding. The other two cases are RECORDS written before 0.5.0: under the --lisi-subsample
+    those versions accepted, scIB drew the observations from an unseeded source, so the two
+    metrics, and every total they enter, moved between two executions of one command. The
+    movement measured is declared in benchmark.LISI_SUBSAMPLE_SPREAD. It is said HERE, under the
+    totals, because the totals are where a reader compares methods. A run in which neither metric
+    was scored gets no sentence, because there is nothing on the page it describes.
     """
     if not any((m.get("metrics") or {}).get(k) is not None for m in ms for k in ("ilisi", "clisi")):
         return ""
     from .benchmark import LISI_SUBSAMPLE_SPREAD as sp
     unit = _esc(_unit(payload))
-    measured = (f"measured once, on one cohort of about 10<sup>5</sup> observations, between two "
-                f"executions of one run at <code>--lisi-subsample {sp['at_percent']}</code>: iLISI "
-                f"moved by up to {_sci(sp['ilisi'])} and cLISI by up to {_sci(sp['clisi'])} "
-                f"(<code>KNOWN_ISSUES.md</code>)")
+    measured = (f"measured on one cohort of about 10<sup>5</sup> observations at "
+                f"<code>--lisi-subsample {sp['at_percent']}</code>, iLISI moved by as much as "
+                f"{_sci(sp['ilisi'])} and cLISI by as much as {_sci(sp['clisi'])} between two "
+                f"executions (<code>KNOWN_ISSUES.md</code>)")
     if "lisi_subsample" not in payload:
         return (f"<p class='sub'><b>This report.json does not record whether iLISI and cLISI were "
                 f"estimated on a subsample</b>; it was written before that was recorded. Under "
-                f"<code>--lisi-subsample</code> scIB draws the {unit} they are scored on afresh in "
-                f"every execution, so they and the totals they enter move between runs: "
-                f"{measured}.</p>")
+                f"<code>--lisi-subsample</code>, which versions before 0.5.0 accepted, scIB drew the "
+                f"{unit} they are scored on afresh in every execution, so they and the totals they "
+                f"enter moved between runs: {measured}.</p>")
     pct = payload.get("lisi_subsample")
     if pct is None or int(pct) >= 100:
-        return (f"<p class='sub'><b>iLISI and cLISI were computed on all the {unit}</b>, so no "
-                f"subsample was drawn, and the spread a subsampled run carries does not apply to "
-                f"this page ({measured}).</p>")
+        return (f"<p class='sub'><b>iLISI and cLISI were computed on all the {unit}</b>: no "
+                f"subsample is drawn, so on the same embedding they are identical in every "
+                f"execution.</p>")
     return (f"<p class='sub'><b>iLISI and cLISI were estimated on a {int(pct)}% subsample of the "
-            f"{unit}</b>, which scIB draws afresh in every execution from an unseeded source. "
-            f"They, and every total they enter, move between two runs of this same command: "
-            f"{measured}. A different percentage or cohort has its own spread. A gap between two "
-            f"totals smaller than that is no gap.</p>")
+            f"{unit}</b>, which scIB drew afresh, from an unseeded source, in the execution that "
+            f"wrote this record. They, and every total they enter, move between two runs of the "
+            f"same command: {measured}. A gap between two totals smaller than that is no gap. "
+            f"From 0.5.0 they are computed on every cell.</p>")
 
 
 def _bench_table(payload):

@@ -244,7 +244,10 @@ the object. `--assay` is new, optional, and recorded. A command line written for
 argparse with exit 2 (`the following arguments are required: --species`). Add `--species` with the
 species the cells came from, and nothing else in the command changes: the species is checked and
 recorded, and no parameter, method or metric reads it. Also in 0.5.0: `score` rewrites only a
-`report.json` that `integrate` wrote, and the report names the spread `--lisi-subsample` carries.
+`report.json` that `integrate` wrote. iLISI and cLISI are computed on every cell, so on the same
+embedding they are the same in every execution: `--lisi-subsample` stops at argparse with exit 2,
+because scIB draws that subsample from an unseeded source; drop it and nothing else in the command
+changes (KNOWN_ISSUES).
 Harmony's fit runs on one thread, so on one machine it returns the same embedding, and the same
 scIB numbers, every time. A harmony number from 0.4.x was one draw of a threaded fit and need not
 match a 0.5.0 run (KNOWN_ISSUES). Harmony's recorded theta is now the value the fit used, 1, where

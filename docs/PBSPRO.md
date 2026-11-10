@@ -84,16 +84,18 @@ On a ~10⁵-cell cohort: training all five methods took **~50 minutes**; scoring
 method**. scIB clusters *twice* per method — once in `cluster_optimal_resolution` for NMI/ARI, once
 inside `isolated_labels_f1` — and each sweep runs one Leiden per resolution.
 
-Three levers, each a stated trade rather than a free lunch:
+Two levers, each a stated trade rather than a free lunch:
 
 ```bash
 --scib-resolutions 7      # a coarser SEARCH for the best-agreeing resolution, not a new metric
---lisi-subsample 50       # a noisier LISI estimate, not a biased one
                           # (the igraph Leiden flavour is forced by default: same algorithm,
                           #  same graph, same resolution, faster implementation)
 ```
 
-Omit all three to reproduce a published scIB benchmark exactly.
+Leave `--scib-resolutions` unset and pass `--no-fast-leiden` to run scIB's clustering exactly as
+scIB does. iLISI and cLISI have no lever: they are computed on every cell. `--lisi-subsample` is
+gone in 0.5.0, because scIB draws that subsample from an unseeded source, so the totals moved
+between two runs of one job; every cell costs a cohort run minutes (KNOWN_ISSUES).
 
 **A walltime kill no longer costs you the models.** The object is written as soon as the embeddings
 exist, before scoring starts, and rewritten once the scores are there. If the job dies during

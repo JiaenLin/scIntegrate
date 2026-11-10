@@ -74,6 +74,11 @@ SHIPPED = {
         "--methods none,harmony,bbknn,scvi,scanvi",
         "score --h5ad results/objects/cohort_integrated.h5ad --out results/ --batch-key sample "
         "--label-key cell_type",
+        # `git show 722bc79:docs/PBSPRO.md`, its lever block: the integrate line above with the two
+        # levers that block told a user to add. 0.5.0 removed `--lisi-subsample` (GAP-C67).
+        "integrate --h5ad joint.h5ad --out results/ --batch-key sample --label-key cell_type "
+        "--design design.csv --colour-by cell_type,cell_type_forced,cell_compartment "
+        "--methods none,harmony,bbknn,scvi,scanvi --scib-resolutions 7 --lisi-subsample 50",
     ],
 }
 
@@ -117,7 +122,7 @@ for release, lines in SHIPPED.items():
         said = [f for f in flags if any(
             f in p and any(breaks_past(v, release) and parts(v) <= parts(vfile)
                            for v in re.findall(r"\b\d+\.\d+\.\d+\b", p)) for p in paras)]
-        check(f"{doc} names the version from which {', '.join(flags)} is required",
+        check(f"{doc} names the version from which {', '.join(flags)} changed",
               said == flags, f"named: {said} of {flags}")
 
 print("")

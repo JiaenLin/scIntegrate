@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """The LISI metrics' measured spread is named beside the totals it moves (GAP-C14).
 
-WHY THIS EXISTS. Under `--lisi-subsample`, scIB's LISI helper draws its subsample from
-std::random_device (scib/knn_graph/knn_graph.cpp: `random_device rd; mt19937 gen(rd())`), so no seed
-reaches it, two executions score different cells, and iLISI and cLISI - one on each side of the
-total - move between two runs of one command. The spread was measured once, between two executions
-of one run at 50%, and stated nowhere a reader of the report would see it.
+WHY THIS EXISTS. Under the `--lisi-subsample` that versions before 0.5.0 accepted, scIB's LISI helper
+drew its subsample from std::random_device (scib/knn_graph/knn_graph.cpp: `random_device rd; mt19937
+gen(rd())`), so no seed reached it, two executions scored different cells, and iLISI and cLISI - one
+on each side of the total - moved between two runs of one command. The movement was stated nowhere a
+reader of the report would see it. From 0.5.0 they are computed on every cell
+(tests/test_lisi_deterministic.py holds that), so the spread now describes only a RECORD written with
+a subsample, and the report of such a record must still say so.
 
 What is held here:
   1. the measured spread is declared once, in the package, and KNOWN_ISSUES.md states the same
@@ -13,8 +15,8 @@ What is held here:
   2. the report says, under the totals, which case this run is: estimated on a subsample (with the
      measured spread), computed on every cell (no subsample is drawn), or not recorded (a report.json
      from before the record);
-  3. through the real CLI: integrate records `lisi_subsample` in report.json, and score rewrites it
-     with its own.
+  3. through the real CLI: integrate records `lisi_subsample: null` in report.json, the page says
+     every cell, and score's rewrite says null too.
 Parts 1 and 2 are stdlib; part 3 needs the analysis stack and prints `SKIP:` without it.
 """
 from __future__ import annotations
@@ -108,7 +110,7 @@ check("a run where neither LISI metric exists says nothing about their subsample
       "subsample" not in none_there, none_there)
 
 # --------------------------------------------------------------------------------------- 3
-print("\n3. through the real CLI: integrate records it, score rewrites it")
+print("\n3. through the real CLI: integrate records every cell, score's rewrite says the same")
 try:
     import anndata  # noqa: F401
     import scib  # noqa: F401
@@ -132,25 +134,26 @@ with tempfile.TemporaryDirectory() as td:
     td = Path(td)
     src, out = td / "human_scrna.h5ad", td / "run"
     cohort(src)
-    rc, log = cli("integrate", "--h5ad", src, "--out", out, "--methods", "none",
-                  "--lisi-subsample", "50", *COMMON)
-    check("integrate --lisi-subsample 50 exits 0", rc == 0, log[-1500:])
+    rc, log = cli("integrate", "--h5ad", src, "--out", out, "--methods", "none", *COMMON)
+    check("integrate exits 0", rc == 0, log[-1500:])
     rep = json.loads((out / "report.json").read_text()) if rc == 0 else {}
-    check("report.json records lisi_subsample: 50", rep.get("lisi_subsample") == 50,
-          {k: rep.get(k) for k in ("lisi_subsample", "version")})
+    check("report.json records lisi_subsample, and it is null: every cell",
+          "lisi_subsample" in rep and rep["lisi_subsample"] is None,
+          {k: rep.get(k, "absent") for k in ("lisi_subsample", "version")})
     page = (out / "reports" / "integration.html").read_text() if rc == 0 else ""
     have = any(m.get("metrics", {}).get(k) is not None for m in rep.get("methods", [])
                for k in ("ilisi", "clisi"))
     # Where scIB's compiled helper cannot run (a prebuilt binary on another platform), both LISI
-    # metrics are absent, and a sentence about their subsample would describe numbers that are not
-    # on the page. Each case is held to what it should say.
-    check("the page says what this run's LISI numbers are" if have else
-          "LISI is absent here, and the page says nothing about a subsample it did not score",
-          ("50% subsample" in page) if have else ("50% subsample" not in page and "ilisi" in page),
+    # metrics are absent, and a sentence about them would describe numbers that are not on the
+    # page. Each case is held to what it should say.
+    check("the page says this run's LISI numbers are on every cell, and names no subsample" if have
+          else "LISI is absent here, and the page says nothing about how it was scored",
+          ("computed on all the cells" in page and "% subsample" not in page) if have
+          else ("computed on all the cells" not in page and "ilisi" in page),
           f"LISI present: {have}")
     rc, log = cli("score", "--h5ad", out / "objects" / "cohort_integrated.h5ad", "--out", out, *COMMON)
     rep2 = json.loads((out / "report.json").read_text()) if rc == 0 else {}
-    check("score without the flag rewrites the record: lisi_subsample is null, every cell",
+    check("score's rewrite of the record says the same: lisi_subsample is null, every cell",
           rc == 0 and "lisi_subsample" in rep2 and rep2["lisi_subsample"] is None,
           {"rc": rc, "lisi_subsample": rep2.get("lisi_subsample", "absent")})
 

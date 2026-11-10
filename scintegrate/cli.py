@@ -540,8 +540,8 @@ def _integrate(a):
         if A_pre is None:
             A_pre = Ai                       # `none` is first, and is the pre object for PCR
         r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind=r["kind"],
-                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample,
-                                resolutions=_res, fast_leiden=not a.no_fast_leiden)
+                                n_cores=a.n_cores, resolutions=_res,
+                                fast_leiden=not a.no_fast_leiden)
         r["aggregate"] = BM.aggregate(r["metrics"], w_bio=a.w_bio)
         ag = r["aggregate"]
         print("      bio {} · batch {} · total {}".format(
@@ -579,8 +579,7 @@ def _integrate(a):
             if pre2 is None:
                 pre2 = Ai
             m = BM.score(Ai, pre2, a.batch_key, col, kind=r["kind"], n_cores=a.n_cores,
-                         lisi_subsample=a.lisi_subsample, resolutions=_res,
-                         fast_leiden=not a.no_fast_leiden)
+                         resolutions=_res, fast_leiden=not a.no_fast_leiden)
             ag = BM.aggregate(m, w_bio=a.w_bio)
             rows2.append({"method": r["method"], "aggregate": ag})
             def _f(x):
@@ -719,9 +718,10 @@ def _integrate(a):
                "unit": D["unit"],
                "batch_key": a.batch_key, "label_key": a.label_key, "k": a.k, "seed": a.seed,
                "n_pcs": a.n_pcs, "n_latent": a.n_latent, "w_bio": a.w_bio,
-               # The record the report's LISI sentence is worded from: a subsample is drawn from
-               # an unseeded source, and only this says whether this run's iLISI/cLISI carry it.
-               "lisi_subsample": a.lisi_subsample,
+               # The record the report's LISI sentence is worded from. Always null now: iLISI and
+               # cLISI are scored on every cell (benchmark._score), so no subsample is drawn. Kept,
+               # and kept null, so a reader of an older record - 50, or no key - tells them apart.
+               "lisi_subsample": None,
                "umap_min_dist": a.min_dist, "umap_n_neighbors": FIG.N_NEIGHBORS,
                "colour_by": list(D.get("colour_cols") or []),
                "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
@@ -1001,8 +1001,7 @@ def _score(a):
         if A_pre is None:
             A_pre = Ai
         r["metrics"] = BM.score(Ai, A_pre, a.batch_key, a.label_key, kind=r["kind"],
-                                n_cores=a.n_cores, lisi_subsample=a.lisi_subsample,
-                                resolutions=_res,
+                                n_cores=a.n_cores, resolutions=_res,
                                 fast_leiden=not a.no_fast_leiden)
         r["aggregate"] = BM.aggregate(r["metrics"], w_bio=a.w_bio)
         ag = r["aggregate"]
@@ -1080,8 +1079,9 @@ def _score(a):
                     entry["sees"] = ME.sees(r["method"])
             payload["rescored"] = True
             payload["object_rescored"] = False
-            # iLISI and cLISI are this command's now, scored under its own --lisi-subsample.
-            payload["lisi_subsample"] = a.lisi_subsample
+            # iLISI and cLISI are this command's now, and it scores them on every cell: whatever
+            # the record said before (a subsample, or nothing), it says null now.
+            payload["lisi_subsample"] = None
             rp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
             print(f"      {rp} (chosen and metrics rewritten)")
             for line in _rebuild(out, payload):
@@ -1237,6 +1237,38 @@ def _common(s):
                         "A DECLARED threshold, not a discovered one (default 0.80)")
 
 
+class _Removed(argparse.Action):
+    """A flag this version no longer has, refused while the command line is parsed, with the reason.
+
+    argparse's own answer to a flag it does not know is "unrecognized arguments", which names the
+    flag and nothing else. A command line written for an earlier version deserves to be told what
+    happened to it and what to do instead, before anything is loaded. Hidden from `--help`.
+    """
+
+    def __init__(self, option_strings, dest, why=None, **kw):
+        self.why = why
+        kw.pop("help", None)
+        super().__init__(option_strings, dest, help=argparse.SUPPRESS, **kw)
+
+    def __call__(self, parser, _namespace, _values, option_string=None):
+        # argparse passes the namespace and the flag's value; a removed flag stores neither.
+        parser.error(f"{option_string} was removed in 0.5.0: {self.why}")
+
+
+def _removed_lisi_subsample(p):
+    """`--lisi-subsample` (GAP-C67): iLISI and cLISI are scored on every cell, always.
+
+    scIB's LISI helper drew the subsample from std::random_device and takes no seed, so a run with
+    it gave different iLISI and cLISI, and different totals, each time it ran. One reason in one
+    place, for `integrate` and `score` alike; no other flag is named in it, so the version test
+    reads only this one off the refusal."""
+    p.add_argument("--lisi-subsample", action=_Removed, metavar="PCT",
+                   why="scIB's LISI helper draws that subsample from std::random_device and takes "
+                       "no seed, so iLISI and cLISI scored on it move between two executions of "
+                       "the same command. They are scored on every cell now, which gives the same "
+                       "value every time; drop the flag and nothing else changes (KNOWN_ISSUES.md)")
+
+
 def parser():
     """The command line, built without running anything - so a test can hold every documented
     example to it."""
@@ -1269,8 +1301,7 @@ def parser():
                         "correction (default 0.6, scIB's convention). THIS IS THE VALUE "
                         "JUDGEMENT: a different downstream question wants a different weight")
     g.add_argument("--n-cores", type=int, default=1)
-    g.add_argument("--lisi-subsample", type=int, default=None, metavar="PCT",
-                   help="subsample percentage for the LISI metrics; the default uses every cell")
+    _removed_lisi_subsample(g)
     g.add_argument("--scib-resolutions", type=int, default=None, metavar="N",
                    help="use N evenly spaced clustering resolutions for the scIB sweeps "
                         "instead of scIB's own grid. scIB clusters TWICE per method - for "
@@ -1291,7 +1322,7 @@ def parser():
     _common(sc_)
     sc_.add_argument("--w-bio", type=float, default=0.6, metavar="W")
     sc_.add_argument("--n-cores", type=int, default=1)
-    sc_.add_argument("--lisi-subsample", type=int, default=None, metavar="PCT")
+    _removed_lisi_subsample(sc_)
     sc_.add_argument("--scib-resolutions", type=int, default=None, metavar="N")
     sc_.add_argument("--no-fast-leiden", action="store_true")
     sc_.set_defaults(fn=_score)

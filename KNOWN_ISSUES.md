@@ -86,38 +86,53 @@ On a 10⁵-cell cohort, training all five methods took ~50 minutes and **scoring
 method**. scIB clusters **twice** per method — once in `cluster_optimal_resolution` for NMI/ARI,
 once inside `isolated_labels_f1` — and each sweep runs one Leiden per resolution.
 
-Three levers, each a stated trade:
+Two levers, each a stated trade:
 
 | lever | what it costs you |
 |---|---|
 | igraph Leiden flavour (default on) | nothing — same algorithm, same graph, same resolution, faster implementation. `--no-fast-leiden` restores scIB's literal behaviour |
 | `--scib-resolutions N` | a coarser **search** for the best-agreeing resolution, not a different metric. Leave unset to reproduce a published scIB number exactly |
-| `--lisi-subsample PCT` | a noisier LISI estimate, not a biased one, and one that moves between runs (below) |
 
-## iLISI and cLISI move between executions under `--lisi-subsample`: measured 2026-11-09
+A third, `--lisi-subsample`, is gone in 0.5.0 (below): it saved seconds, and cost every total its
+reproducibility.
 
-`--lisi-subsample PCT` has scIB estimate iLISI and cLISI on a random PCT% of the cells. scIB's
-compiled LISI helper draws that subsample from `std::random_device` (`knn_graph.cpp`:
-`random_device rd; mt19937 gen(rd())`), so no seed this tool passes reaches it. Every execution
-scores a different set of cells, and the two metrics, one on each side of the scIB total, move
-between two runs of the same command.
+## iLISI and cLISI are computed on every cell; `--lisi-subsample` is gone (0.5.0)
 
-**Measured once, between two executions of one run at `--lisi-subsample 50`**, on one cohort
-of about 10⁵ observations, for the two methods that train nothing (`none`, `bbknn`). iLISI moved
-by up to **1.5e-4** and cLISI by up to **2.6e-4**. Every other scIB metric of those two methods
-agreed to 1e-6. A different cohort size or percentage has its own spread. This is the only
-measurement there is, and the value is `benchmark.LISI_SUBSAMPLE_SPREAD`.
+Before 0.5.0, `--lisi-subsample PCT` had scIB estimate iLISI and cLISI on a random PCT% of the
+cells. scIB's compiled LISI helper draws that subsample from `std::random_device`
+(`knn_graph.cpp`: `random_device rd; mt19937 gen(rd())`) and takes no seed, so no seed this tool
+passes reaches it. Every execution scored a different set of cells, and the two metrics, one on
+each side of the scIB total, moved between two runs of the same command.
 
-**What it costs a reader.** Each enters a total through a mean, so a method's total moves by at
-most `w_bio × ΔcLISI / n_bio + (1 − w_bio) × ΔiLISI / n_batch`. Here `n_bio` and `n_batch` are
-the metrics its two means were taken over, the `n/of` counts printed beside every total. For six
-and four at `--w-bio 0.6` that is about 4e-5. This is an inference from the weighting, not a
-measurement. A gap between two totals smaller than that is no gap.
+**Measured between two executions at `--lisi-subsample 50`**, on one cohort of about 10⁵
+observations, for the methods that train nothing (2026-11-09): iLISI moved by as much as
+**1.9e-3** and cLISI by as much as **6.2e-4**, while every other scIB metric of those methods
+agreed to 1e-6. The first of three comparisons had given 1.5e-4 and 2.6e-4, and a draw can move
+them further. The value is `benchmark.LISI_SUBSAMPLE_SPREAD`.
 
-**What to do.** Leave `--lisi-subsample` unset when a total must agree across runs. Without it
-scIB uses every cell, so no subsample is drawn: its default percentage is 100, and the helper
-skips a cell only when a draw from 1 to 100 exceeds the percentage. The report says, under the
-totals, which of the two a run did, read from `lisi_subsample` in `report.json`.
+**Why every cell, and not a seed.** The helper skips a cell only when a draw from 1 to 100
+exceeds the percentage. At 100, which is what scIB's LISI functions use when they are given no
+subsample, no draw can skip a cell, so the value does not depend on the draw. A seed is not on
+offer: the helper takes exactly five arguments, and none is a seed. A tool could still draw its
+own half, but only by running the helper on every cell anyway (it cannot be told which) and
+replacing scIB's own call path to pick the half before the Python step. Measured on 10⁵ synthetic
+cells, per metric: about 16 s for half the cells and 25 to 27 s for all of them, on one to four
+cores. The seeded route would have saved 4 to 6 of those seconds. A run makes two LISI calls per
+method per label column, so every cell costs minutes against a run of hours.
+
+**What changed in 0.5.0.** `integrate` and `score` score every cell. `--lisi-subsample` stops at
+argparse with exit 2 and says why; drop it, and nothing else in the command changes.
+`report.json` records `lisi_subsample: null`, and the report says, under the totals, that the two
+were computed on all the cells and are identical in every execution on the same embedding.
+`tests/test_lisi_deterministic.py` runs each command twice and compares them to the last bit.
+
+**A record written with a subsample** (`lisi_subsample` 50 in its `report.json`, or a
+`report.json` from before that key) carries the movement above, and the report says so under the
+totals. Each metric enters a total through a mean, so a method's total moves by at most
+`w_bio × ΔcLISI / n_bio + (1 − w_bio) × ΔiLISI / n_batch`, where `n_bio` and `n_batch` are the
+metrics its two means were taken over (the `n/of` counts printed beside every total). For six and
+four at `--w-bio 0.6` that is about 2.5e-4. This is an inference from the weighting, not a
+measurement. A gap between two such totals smaller than that is no gap.
 
 ## scANVI is semi-supervised and ranks against unsupervised methods on equal terms
 
