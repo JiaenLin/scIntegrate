@@ -373,6 +373,35 @@ def _knn_table(payload):
             f"<code>tables/knn_metrics.csv</code>.</p>")
 
 
+def _pca_note(payload):
+    """Which PCA `none`, Harmony and BBKNN read, from report.json's `pca` record (GAP-128).
+
+    An older record has no `pca`: it reused the input's PCA as delivered, withheld cells or not,
+    and the page then says only that the record does not say.
+    """
+    p = payload.get("pca") or {}
+    unit = _unit(payload)
+    lead = "<p><b>The PCA <code>none</code>, Harmony and BBKNN read</b> "
+    if not p:
+        return lead + "is not recorded in this run's report.json (written before 0.6.0).</p>"
+    th = p.get("fit_threads")
+    how = (f", over {_esc(p.get('genes'))}, {_esc(p.get('n_comps'))} components, by "
+           f"<code>{_esc(p.get('call'))}</code> on {_esc(th)} thread{'s' if th != 1 else ''}")
+    if p.get("source") == "refit":
+        return (lead + f"was refit on the {p.get('n_cells_fitted', 0):,} retained {_esc(unit)}"
+                f"{how}. The {p.get('n_withheld_not_fitted', 0):,} withheld are not in it, and "
+                f"<code>obsm['X_pca']</code> is NaN on them: the input's PCA had them in its fit, "
+                f"so it was not used.</p>")
+    if p.get("source") == "computed":
+        return (lead + f"was computed here on the {p.get('n_cells_fitted', 0):,} {_esc(unit)} "
+                f"integrated{how}; the object carried none.</p>")
+    if p.get("declared"):
+        return (lead + f"is the input's, as declared by <code>{_esc(p['declared'])}</code>: "
+                f"{p.get('n_withheld_in_fit', 0):,} withheld {_esc(unit)} are in its fit, and keep "
+                f"their rows in <code>obsm['X_pca']</code>.</p>")
+    return lead + f"is the input's, reused as delivered: {_esc(p.get('why'))}.</p>"
+
+
 def write_integrate(out_dir, payload, figs):
     out = Path(out_dir)
     ch = payload.get("chosen") or {}
@@ -460,6 +489,7 @@ own default it is marked, because a benchmark whose settings are only in source 
 benchmark nobody can reproduce or challenge. The reasoning behind each choice is in
 <code>docs/METHODS.md</code>.</p>
 {_settings_table(payload.get('method_settings') or {})}
+{_pca_note(payload)}
 
 <h2>Before and after, at one scale</h2>
 <p class="lede">The leftmost panel is always <code>none</code> — the uncorrected baseline. Every

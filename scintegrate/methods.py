@@ -131,11 +131,13 @@ def _fitted(h, name):
 
 def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         n_latent=30, n_pcs=50, seed=0, max_epochs=None, scanvi_max_epochs=None,
-        counts_layer="counts", **kwargs):
+        counts_layer="counts", pca=None, **kwargs):
     """Run one method. Returns {"kind", "emb", "adata", "note"}.
 
     `emb` is the corrected coordinate space for `embed` methods and None for `graph` methods,
     whose corrected object is returned instead so the benchmark can read its connectivities.
+    `pca` is the run's record of the PCA in obsm['X_pca'] (cli._the_pca), worded into `none`'s
+    note: that PCA IS the baseline, and the baseline must say whether it was refit here.
     """
     import scanpy as sc
 
@@ -149,11 +151,23 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
               f"using {used_pcs}. Every method reading X_pca uses the same {used_pcs}.")
 
     if method == "none":
+        src = (pca or {}).get("source")
+        if src == "refit":
+            what = (f"X_pca refit here on the {pca['n_cells_fitted']:,} retained cells (the "
+                    f"{pca['n_withheld_not_fitted']:,} withheld are not in it)")
+            source = "obsm['X_pca'], refit here on the retained cells (report.json pca)"
+        elif src == "computed":
+            what = f"X_pca computed here on the {pca['n_cells_fitted']:,} cells integrated"
+            source = "obsm['X_pca'], computed here (report.json pca)"
+        else:
+            what = "the object's own X_pca"
+            source = "obsm['X_pca'], computed upstream and reused" + (
+                f" as declared (--keep-input-pca): {pca['n_withheld_in_fit']:,} withheld cells are "
+                f"in its fit" if (pca or {}).get("declared") else "")
         return {"kind": "embed", "emb": np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
                 "adata": None,
-                "note": f"the object's own X_pca, first {used_pcs} of {have_pcs} components",
-                "settings": {"n_pcs": used_pcs, "pcs_available": have_pcs,
-                             "source": "obsm['X_pca'], computed upstream and reused"}}
+                "note": f"{what}, first {used_pcs} of {have_pcs} components",
+                "settings": {"n_pcs": used_pcs, "pcs_available": have_pcs, "source": source}}
 
     if method == "harmony":
         import harmonypy
@@ -189,10 +203,19 @@ def run(adata, method, batch_key, *, label_key=None, unlabeled=(), hvg=None,
         # libraries loaded when its context is entered - a fit that loaded sklearn inside it ran
         # threaded. The fit's thread count is read inside the limit and recorded, not assumed.
         kw = dict(max_iter_harmony=20, random_state=seed)
+        # THE BATCH COLUMN WITHOUT ITS UNUSED CATEGORIES (GAP-C65). harmonypy counts the levels
+        # it OBSERVES for theta and builds its design matrix from EVERY category, so a category no
+        # cell carries - what an object filtered upstream keeps of what it lost - failed the fit
+        # with "operands could not be broadcast together with shapes (K,6) (K,7)". Removing them
+        # keeps the order of the rest, so a column without any gives harmonypy the same frame.
+        import pandas as pd
+        meta = adata.obs[[batch_key]].copy()
+        if isinstance(meta[batch_key].dtype, pd.CategoricalDtype):
+            meta[batch_key] = meta[batch_key].cat.remove_unused_categories()
         with threadpool_limits(limits=1):
             fit_threads = max((p.get("num_threads") or 1 for p in threadpool_info()), default=1)
             h = harmonypy.run_harmony(np.asarray(adata.obsm["X_pca"])[:, :used_pcs],
-                                      adata.obs, [batch_key], **kw)
+                                      meta, [batch_key], **kw)
         held = (" (bit-identical between executions on one machine)" if fit_threads == 1
                 else " - NOT held to one: this embedding varies between executions")
         return {"kind": "embed", "emb": np.asarray(h.Z_corr).T, "adata": None,

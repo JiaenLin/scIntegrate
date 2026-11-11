@@ -123,7 +123,9 @@ objects/cohort_integrated.h5ad
     X                     log1p of library-size-normalised counts
     layers['counts']      raw integer counts — what the count models and DE read
     layers['lognorm']     the same values as X, named so X's scale is never implicit
-    obsm['X_pca']         the uncorrected baseline, kept permanently
+    obsm['X_pca']         the uncorrected baseline none, Harmony and BBKNN read: the input's,
+                          or refit on the retained cells when withheld cells were in its fit;
+                          NaN on withheld cells (report.json pca says which)
     obsm['X_harmony']     one per method compared
     obsm['X_umap_<m>']    one 2-D view per method
     obsm['X_umap']        a copy of the chosen view
@@ -146,9 +148,9 @@ Four states are distinguishable from the filesystem alone, by a reader who did n
 
 | file | written | says |
 |---|---|---|
-| `STATUS.json` | first as `partial`, last with the outcome | `ok` · `partial` (it died) · `refused` with a `fix` · `failed`; the commit read from `.git` by file, the job, the products on disk, `sees` per method, the wrapped package versions |
+| `STATUS.json` | first as `partial`, last with the outcome | `ok` · `partial` (it died, with `RUNNING.txt` standing and no seal; or it completed without a method it was asked for, named in the headline and in `absent[]`, and sealed) · `refused` with a `fix` · `failed`; the commit read from `.git` by file, the job, the products on disk, `sees` per method, the wrapped package versions |
 | `RUNNING.txt` | at start | replaced at exit by one of the two below |
-| `SEALED.txt` | exit 0 **and** every expected product present | the object, the tables and `report.json` |
+| `SEALED.txt` | exit 0 **and** every expected product present, outcome `ok` or `partial` | the object, the tables and `report.json` |
 | `FAILED.txt` | anything else | names what is missing |
 
 `scintegrate describe` prints the declaration — needs, provides, what each method was shown
@@ -238,6 +240,16 @@ Nor does anything here show the labels are correct. They are inherited from the 
 every limit recorded there applies to every number here.
 
 ## Versions
+
+**0.6.0.** When `--drop-labels` withholds cells that have rows in the input's `X_pca`, the PCA is
+refit on the retained cells, and `none`, Harmony and BBKNN are fitted on that: before, the input's
+PCA was reused with the withheld cells in its fit, and the delivered `X_pca` kept their rows. The
+same command line therefore gives another `X_pca` (NaN on the withheld cells) and other `none`,
+Harmony and BBKNN numbers than 0.5.0 on such an object; scVI and scANVI read no PCA. `report.json`
+`pca` says which PCA was read and how it was made; `--keep-input-pca` keeps the old behaviour, as
+declared (docs/METHODS.md, KNOWN_ISSUES). No command line 0.5.0 accepted stops. Also in 0.6.0:
+Harmony runs on a batch column holding a category no cell carries (it failed), and a requested
+method that fails leaves `STATUS.json` `partial`, naming it, where it said `ok`.
 
 **0.5.0.** `--species` is required by `assess`, `integrate` and `score`, and is checked against
 the object. `--assay` is new, optional, and recorded. A command line written for 0.4.x stops at

@@ -69,11 +69,21 @@ Runs first, always, and cannot be turned off. The stage's question is whether in
 *needed*; a comparison without the uncorrected case can only say which correction is strongest,
 never whether any was warranted.
 
-**It reuses `X_pca` from the input object rather than recomputing.** That PCA is an input to the
-comparison and scIntegrate does not audit how it was made — whether on lognormalised values,
-whether scaled, over which genes. Three of the five methods read it, so if it is wrong they are
-all wrong together. If the object carries no `X_pca`, one is computed here with
-`sc.pp.pca(n_comps=--n-pcs, svd_solver="arpack", random_state=--seed)` and the run says so.
+**It reuses `X_pca` from the input object rather than recomputing, unless cells are withheld.**
+That PCA is an input to the comparison and scIntegrate does not audit how it was made — whether on
+lognormalised values, whether scaled, over which genes. Three of the five methods read it, so if
+it is wrong they are all wrong together. If the object carries no `X_pca`, one is computed here
+with `sc.pp.pca(n_comps=--n-pcs, svd_solver="arpack", random_state=--seed)` on `X`, over the
+object's `highly_variable` mask when it carries one, and the run says so.
+
+When `--drop-labels` withholds cells and any of them has a row in the input's `X_pca`, they were
+in that PCA's fit, so it is **refit on the retained cells** by the same call (below, *Withholding
+cells from the integration*). The record of which PCA the three methods read, and how it was
+made, is `report.json` `pca` (also in the object's provenance and on the page): `source` is
+`input`, `refit` or `computed`, with the cells fitted, the withheld cells not fitted and in the
+fit, the components, the genes, the call and its thread count. A PCA made here is fitted on one
+thread, as Harmony is, because an arpack PCA's last bits depend on the BLAS's thread count and
+Harmony and every metric are fitted on those bits (KNOWN_ISSUES).
 
 If `X_pca` has fewer components than `--n-pcs`, slicing returns what exists and raises nothing.
 The run now prints the shortfall and every method uses the same reduced number.
@@ -277,7 +287,19 @@ because no integration decision should be made on metrics alone.
 
 Cells carrying a named label value are withheld from **the fit**: they are not in the PCA, not in
 Harmony's clustering, not in BBKNN's graph, and not in scVI or scANVI's training. They remain in
-the delivered object, with **`NaN` in every embedding**.
+the delivered object, with **`NaN` in every embedding**, `obsm['X_pca']` included.
+
+**The PCA is refit for this.** An `X_pca` made upstream was fitted on every cell the upstream
+object held, the withheld ones included; reused as delivered, they would still shape the space
+`none`, Harmony and BBKNN are fitted in. So when a withheld cell has a row in the input's `X_pca`,
+the PCA is refit on the retained cells (the call in *`none`* above, the input's `highly_variable`
+mask reused verbatim) and the input's is not used. Before 0.6.0 it was reused, and the delivered
+`X_pca` kept the withheld cells' rows (GAP-128). Two cases keep the input's PCA: it is NaN on every
+withheld cell, so none of them can have been in its fit; or the run declares `--keep-input-pca`,
+the old behaviour, and `report.json` `pca` then records how many withheld cells are in its fit
+and the delivered `X_pca` keeps their rows. What the refit cannot undo: the `highly_variable`
+mask itself was chosen upstream, possibly with the withheld cells present, and is reused as
+delivered, as every method's gene set is.
 
 **Why it can matter.** Sentinel cells left in the fit shape the space the retained cells sit in,
 and they do so unevenly. BBKNN is the clearest case: it forces batch-balanced edges, so a

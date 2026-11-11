@@ -3,11 +3,14 @@ ok, partial, refused, failed — from the filesystem alone.
 
     STATUS.json   written FIRST as `partial`, rewritten LAST with the outcome and the products
     RUNNING.txt   written at start; replaced at exit by
-    SEALED.txt    exit 0 and every expected product present, or
+    SEALED.txt    exit 0 and every expected product present, the outcome `ok` or `partial`, or
     FAILED.txt    anything else, naming what is missing
 
 A run that dies leaves STATUS.json saying `partial` and RUNNING.txt standing — a different fact
-from `refused` and from `ok`. The job script's own EXIT trap is the second witness; this is the
+from `refused` and from `ok`. A run that COMPLETED without part of what it was asked for (a
+requested method failed) is rewritten `partial` with `absent[]` naming it, `finished` set, and
+sealed: it ran and says what it lacks, which is how the harness's status contract defines
+`partial`. The job script's own EXIT trap is the second witness; this is the
 first, and the one that exists when there is no job script. Same shape as the status contract
 shared with the tools this one is orchestrated beside. Stdlib only.
 """
@@ -110,7 +113,7 @@ def finish(out: Path, *, status: str, headline: str, exit_code: int, refusal: di
     products = products_of(out)
     present = {x["path"] for x in products if x["bytes"] > 0}
     missing = [e for e in (expected or []) if e not in present]
-    if status == "ok" and missing:
+    if status in ("ok", "partial") and missing:
         status = "failed"
         headline = f"{headline}; missing products: {', '.join(missing)}"
     if status == "refused":
@@ -125,7 +128,7 @@ def finish(out: Path, *, status: str, headline: str, exit_code: int, refusal: di
     if sees is not None:
         rec["sees_by_method"] = sees
     p.write_text(json.dumps(rec, indent=1, default=str) + "\n", encoding="utf-8")
-    sealed = status == "ok" and exit_code == 0 and not missing
+    sealed = status in ("ok", "partial") and exit_code == 0 and not missing
     seal = out / ("SEALED.txt" if sealed else "FAILED.txt")
     lines = [f"exit={exit_code}", f"status={status}", f"jobid={(rec.get('job') or {}).get('id') or 'none'}",
              f"commit={rec.get('commit') or 'unidentified'}", f"started={rec.get('started')}",

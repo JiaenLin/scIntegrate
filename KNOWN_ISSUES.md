@@ -240,3 +240,36 @@ two runs of the real CLI.
   fits interleaved: the same CPU time (17.0 s against 16.9 s, median of two) and 21 s against
   25 s of wall time in the quieter round. There the BLAS could not be held (Accelerate), so a
   node whose BLAS is threaded may lose more; that has not been measured.
+
+## Withheld cells were in the PCA the methods read — CLOSED in 0.6.0 (GAP-128)
+
+**What it was.** Up to 0.5.0, `--drop-labels` withheld cells from every method's fit but not from
+the PCA. An `X_pca` made upstream is fitted on every cell the upstream object held, and
+scIntegrate reused it as delivered, so the withheld cells still shaped the space `none`, Harmony
+and BBKNN were fitted in, and the delivered `X_pca` kept their rows, while docs/METHODS.md said
+they were in no PCA and NaN in every embedding. On `tests/_cohort.py`'s cohort at 0.5.0, 18 of
+502 cells withheld: `X_none` on the other 484 equal to the input's PCA to the last bit, and the
+delivered `X_pca` without one NaN row. scVI and scANVI were not affected: they read no PCA.
+
+**What changed in 0.6.0.** When a withheld cell has a row in the input's `X_pca`, the PCA is refit
+on the retained cells, by the call used when an object has no `X_pca`, over the input's
+`highly_variable` mask, and the delivered `X_pca` is NaN on the withheld rows. `report.json` `pca`,
+the object's provenance and the page say which PCA was read and how it was made.
+`--keep-input-pca` keeps the input's PCA, as declared, with the count of withheld cells in its fit.
+`tests/test_withheld_pca.py` holds it through the real CLI.
+
+**What remains, named.**
+- **Earlier numbers.** On an object whose PCA had the withheld cells in its fit, a 0.5.0 `X_pca`,
+  `X_none`, `X_harmony` or BBKNN graph, and every number computed from them, is not the 0.6.0
+  one. scVI's and scANVI's are unchanged by this. Compare a re-run with a re-run.
+- **The genes.** The `highly_variable` mask is reused as delivered. If it was chosen with the
+  withheld cells present, they still had a say in which genes the PCA reads; the refit removes
+  them from the fit, not from the gene selection.
+- **The recipe.** The refit is this tool's PCA (log-normalised `X`, centred, not scaled). An
+  upstream PCA made another way, scaled for instance, is replaced by this one when cells are
+  withheld; `--keep-input-pca` is the way to keep it, with the withheld cells in it.
+- **Threads.** The refit is held at one thread, as Harmony's fit is: an arpack PCA's last bits
+  depend on the BLAS's thread count (measured on 20,000 synthetic cells: 1 against 2 threads moved
+  a coordinate by 1.6e-3), and Harmony and every metric are fitted on those bits. threadpoolctl
+  cannot hold Apple's Accelerate, so on a Mac the result is the same between executions with the
+  same thread settings, not across them (measured). Another machine is not established, as above.

@@ -354,6 +354,100 @@ def _restore_withheld(D, results):
     return full, wide_results
 
 
+def _the_pca(A, D, a):
+    """The PCA that `none`, Harmony and BBKNN read: chosen, fitted where it must be, recorded.
+
+    WITHHELD CELLS ARE NOT IN IT (GAP-128). An `X_pca` made upstream was fitted on every cell the
+    upstream object held. Reused as delivered after `--drop-labels`, the withheld cells still
+    shaped the space the retained cells were integrated in - the thing withholding exists to stop
+    - and kept their coordinates in the delivered `X_pca`, while this tool's docs said they were in
+    no PCA and NaN in every embedding. So when a withheld cell has a row in the input's PCA, the
+    PCA is REFIT here on the retained cells, by the call this tool already made when an object
+    carried no `X_pca`. A withheld cell whose row is NaN cannot have been in a fit, so an input
+    whose PCA is NaN on every withheld cell is reused. `--keep-input-pca` keeps the input's PCA
+    whole instead, as declared, and the record says how many withheld cells are in its fit.
+
+    HELD AT ONE THREAD, as Harmony's fit is. The bits of an arpack PCA depend on the BLAS's thread
+    count (measured: 1 against 2 threads moved a coordinate by 1.6e-3 on 20,000 synthetic cells),
+    and Harmony and every metric downstream are fitted on those bits. threadpoolctl holds the
+    pools it can see (OpenBLAS, MKL, OpenMP); Apple's Accelerate is not one of them, so on a Mac the
+    claim is one machine, one thread setting (KNOWN_ISSUES).
+
+    `A` is the object being integrated, the retained cells, and is fitted in place. The delivered
+    `X_pca` goes on `D["full_adata"]`: the fitted PCA with NaN on the withheld rows.
+    """
+    import numpy as np
+    drop = D.get("drop_mask")
+    n_w = int(drop.sum()) if drop is not None else 0
+    keep_input = bool(getattr(a, "keep_input_pca", False))
+    full = D["full_adata"]
+    rec = {"source": None, "declared": None, "why": "", "n_cells_fitted": None,
+           "n_withheld_not_fitted": n_w, "n_withheld_in_fit": 0, "n_comps": None, "genes": None,
+           "n_genes": None, "call": None, "fit_threads": None, "input_pca": None}
+    if "X_pca" in A.obsm:
+        P_in = np.asarray(full.obsm["X_pca"])
+        in_fit = int((~np.isnan(np.asarray(P_in[drop], dtype="float64")).any(axis=1)).sum()) if n_w else 0
+        rec["input_pca"] = (f"obsm['X_pca'], {P_in.shape[1]} components"
+                            + (f"; {in_fit:,} of the {n_w:,} withheld cells have a row in it" if n_w else ""))
+        if not in_fit or keep_input:
+            rec.update(source="input", n_comps=int(P_in.shape[1]),
+                       genes="as made upstream, not audited here")
+            if in_fit:
+                rec.update(declared="--keep-input-pca", n_withheld_not_fitted=n_w - in_fit,
+                           n_withheld_in_fit=in_fit,
+                           why=(f"--keep-input-pca: the input's PCA is used as delivered; {in_fit:,} "
+                                f"withheld cells have rows in it, so they were in its fit, and they "
+                                f"keep those rows in the delivered X_pca"))
+            elif n_w:
+                rec["why"] = ("the input's PCA is NaN on every withheld cell, so none of them can "
+                              "have been in its fit; reused as delivered")
+            else:
+                rec["why"] = "no cell was withheld; the input's PCA is reused as delivered"
+            print(f"  PCA: {rec['why']}")
+            return rec
+        source = "refit"
+        why = (f"{in_fit:,} of the {n_w:,} withheld cells have rows in the input's PCA, so they "
+               f"were in its fit; refit here on the {A.n_obs:,} retained cells, and the input's "
+               f"PCA is not used")
+    else:
+        if keep_input:
+            print("  --keep-input-pca: the object carries no X_pca, so there is none to keep")
+        source = "computed"
+        why = f"the object carries no X_pca; computed here on the {A.n_obs:,} cells integrated"
+    hvg = D.get("hvg")
+    n_genes = int(np.asarray(hvg).sum()) if hvg is not None else int(A.n_vars)
+    n_comps = min(int(a.n_pcs), min(int(A.n_obs), n_genes) - 1)
+    if n_comps < a.n_pcs:
+        print(f"  NOTE: --n-pcs {a.n_pcs}, but {A.n_obs:,} cells over {n_genes:,} genes allow "
+              f"{n_comps} components; {n_comps} are fitted")
+    mask = "highly_variable" if hvg is not None else None
+    print(f"  PCA: {why}")
+    import scanpy as sc
+    from threadpoolctl import threadpool_info, threadpool_limits
+    with threadpool_limits(limits=1):
+        threads = max((p.get("num_threads") or 1 for p in threadpool_info()), default=1)
+        try:
+            sc.pp.pca(A, n_comps=n_comps, mask_var=mask, svd_solver="arpack", random_state=a.seed)
+        except TypeError:                      # scanpy < 1.10 spells the mask use_highly_variable
+            sc.pp.pca(A, n_comps=n_comps, use_highly_variable=mask is not None,
+                      svd_solver="arpack", random_state=a.seed)
+    P = np.asarray(A.obsm["X_pca"], dtype="float32")
+    if n_w:
+        wide = np.full((full.n_obs, P.shape[1]), np.nan, dtype="float32")
+        wide[~drop] = P
+        full.obsm["X_pca"] = wide
+    rec.update(source=source, why=why, n_cells_fitted=int(A.n_obs), n_comps=int(P.shape[1]),
+               genes=(f"the input's highly_variable mask, {n_genes:,} of {A.n_vars:,} genes, "
+                      f"reused verbatim" if mask else
+                      f"every gene, {A.n_vars:,}: the input carries no highly_variable mask"),
+               n_genes=n_genes, fit_threads=int(threads),
+               call=(f"scanpy.pp.pca(X, n_comps={n_comps}, mask_var={mask!r}, "
+                     f"svd_solver='arpack', random_state={a.seed})"))
+    print(f"    {P.shape[1]} components over {rec['genes']}, fitted on {threads} "
+          f"thread{'s' if threads != 1 else ''}")
+    return rec
+
+
 # ---------------------------------------------------------------------------------- integrate
 
 def _integrate(a):
@@ -428,10 +522,9 @@ def _integrate(a):
     for k, v in missing.items():
         print(f"  NOT compared - {k}: {v}")
 
-    if "X_pca" not in A.obsm:
-        print("  computing PCA (the object carries no X_pca)")
-        import scanpy as sc
-        sc.pp.pca(A, n_comps=a.n_pcs, svd_solver="arpack", random_state=a.seed)
+    # The PCA `none`, Harmony and BBKNN read: refit on the retained cells when withheld cells are
+    # in the input's (GAP-128), and recorded whichever it is.
+    D["pca"] = _the_pca(A, D, a)
 
     # The scIB clustering grid, used by BOTH sweeps. Fewer points is a coarser
     # search for the best-agreeing resolution, not a different metric - and it is
@@ -449,7 +542,7 @@ def _integrate(a):
         try:
             r = ME.run(A, m, a.batch_key, label_key=a.label_key, unlabeled=sent, hvg=D["hvg"],
                        n_latent=a.n_latent, n_pcs=a.n_pcs, seed=a.seed, max_epochs=a.max_epochs,
-                       scanvi_max_epochs=getattr(a, "scanvi_max_epochs", None))
+                       scanvi_max_epochs=getattr(a, "scanvi_max_epochs", None), pca=D["pca"])
         except Exception as _e:                                        # noqa: BLE001
             # ONE METHOD FAILING DOES NOT DISCARD THE OTHERS. Under the single-job rule on a
             # GPU queue, every method trains in this process; a crash in the fourth used to
@@ -665,6 +758,10 @@ def _integrate(a):
     print("\nwriting the deliverable", flush=True)
     obs_keep = obs_keep_early
     from . import __version__, env as ENV, status as ST
+    # A method that FAILED is absent from the comparison exactly as an uninstalled one is, and the
+    # provenance says so: it was recorded as compared, and its failure only in report.json.
+    missing = {**missing, **failed_methods}
+    a.failed_methods = dict(failed_methods)      # read by _with_status: STATUS partial, naming it
     prov = {"tool": "scintegrate", "version": __version__, "commit": ST.commit(),
             "state_version": STATE_VERSION, "argv": list(sys.argv), "python": sys.version.split()[0],
             "job": ST.job(),
@@ -678,11 +775,11 @@ def _integrate(a):
             "umap_n_neighbors": FIG.N_NEIGHBORS,
             "colour_by": list(D.get("colour_cols") or []),
             "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
-            "methods_compared": ok, "methods_absent": missing,
+            "methods_compared": [r["method"] for r in results], "methods_absent": missing,
+            "pca": D["pca"],
             "design": D["design_note"], "sentinels": D["sentinels"],
             "scib_metrics_computed_on": int(real.sum()),
             "scib_metrics_excluded_sentinels": n_drop}
-    missing = {**missing, **failed_methods}
     chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
     if chosen["supervision_caveat"]:
         print("\n  ! " + chosen["supervision_caveat"])
@@ -739,6 +836,7 @@ def _integrate(a):
                "confounding": conf,
                "alt_rankings": alt_rankings,
                "withheld_from_integration": D.get("drop_note") or "",
+               "pca": D["pca"],
                "celltypes": _plainrows(arows), "dominance": dom, "summary": summ,
                "object": str(op), "metric_meaning": BM.MEANING,
                "figures": [{"name": n, "path": str(Path(p).name), "caption": c}
@@ -978,6 +1076,10 @@ def _score(a):
     for m in order:
         if m in stored:
             _nan |= np.isnan(np.asarray(A.obsm[stored[m]], dtype="float64")).any(axis=1)
+    if graphs and "X_pca" in A.obsm:
+        # A graph method is scored beside the uncorrected PCA (_stored_graph), which is NaN on the
+        # withheld cells too from 0.6.0.
+        _nan |= np.isnan(np.asarray(A.obsm["X_pca"], dtype="float64")).any(axis=1)
     if _nan.any():
         print(f"  {int(_nan.sum()):,} cells carry NaN embeddings (withheld from the integration); "
               f"excluded from the METRICS only")
@@ -1293,6 +1395,11 @@ def parser():
                    help="`none` is always included and always first: the stage asks whether "
                         "integration is NEEDED, and it is the baseline every cost is measured "
                         "against")
+    g.add_argument("--keep-input-pca", action="store_true",
+                   help="with --drop-labels: fit none, Harmony and BBKNN on the input's X_pca as "
+                        "delivered, although the withheld cells have rows in it and so were in its "
+                        "fit. By default the PCA is then refit on the retained cells. Recorded in "
+                        "report.json pca, with the number of withheld cells in the fit")
     g.add_argument("--n-latent", type=int, default=30, help="latent dimensions for scVI/scANVI")
     g.add_argument("--max-epochs", type=int, default=None,
                    help="passed to scVI/scANVI; the default lets scvi-tools scale it to n_obs")
@@ -1383,7 +1490,10 @@ def _describe(a):
                             "rules_that_differ": sorted(axes.ASSAY_RULES) or "none",
                             "absent_is_recorded_as": "not declared"}},
          "escapes": [{"what": "withholding labels from the integration", "how": "--drop-labels",
-                      "recorded": "report.json withheld_from_integration and tables/integration_withheld_by_arm.csv"}],
+                      "recorded": "report.json withheld_from_integration and tables/integration_withheld_by_arm.csv"},
+                     {"what": "fitting on the input's PCA although withheld cells are in it",
+                      "how": "--keep-input-pca",
+                      "recorded": "report.json pca (declared, n_withheld_in_fit)"}],
          "cannot_show": CANNOT_SHOW,
          "status_files": ["STATUS.json", "RUNNING.txt", "SEALED.txt", "FAILED.txt"],
          "language": "python", "entry": "scintegrate.cli", "needs_env": True}
@@ -1419,13 +1529,24 @@ def _with_status(a, argv):
                            "fix": "change the input the refusal names, or the flag it asks for"})
     else:
         from . import env as ENV
+        # A REQUESTED METHOD THAT FAILED makes the run `partial`, named in the headline and in
+        # absent[] (GAP-C65). It used to say `ok`, "every method compared", with the method
+        # missing and its failure in one line of report.json - so a check of that method, reading
+        # the status, never noticed it had not run. `partial` is sealed: the run completed and
+        # says what it lacks (the harness's status contract), which a crash's `partial` stub,
+        # with RUNNING.txt still standing and no seal, does not.
+        failed = getattr(a, "failed_methods", None) or {}
+        headline = {"integrate": "every method compared and the object written",
+                    "assess": "the question measured; nothing integrated",
+                    "score": "stored results re-scored"}.get(a.cmd, "done")
+        if failed and rc == 0:
+            headline = ("partial: " + "; ".join(f"{m} {why}" for m, why in failed.items())
+                        + " - every other method compared and the object written")
         # The packages this interpreter actually holds, measured by the stdlib-only probe - the
         # same record the object's provenance carries. STATUS.json declared the field and
         # always wrote it empty.
-        ST.finish(out, status="ok" if rc == 0 else "failed", exit_code=rc,
-                  headline={"integrate": "every method compared and the object written",
-                            "assess": "the question measured; nothing integrated",
-                            "score": "stored results re-scored"}.get(a.cmd, "done"),
+        ST.finish(out, status=("failed" if rc != 0 else "partial" if failed else "ok"), exit_code=rc,
+                  headline=headline, absent=[{"what": m, "why": why} for m, why in failed.items()],
                   expected=expected, inputs=[{"path": str(getattr(a, "h5ad", ""))}],
                   sees={m: ME.sees(m) for m in ME.METHODS},
                   wrapped_versions={p_: v_ for c_ in ENV.probe().values()
