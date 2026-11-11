@@ -27,7 +27,10 @@ from pathlib import Path
 from . import axes     # stdlib only, like status and env: `--help` and `describe` stay instant
 
 REFUSE = 2
-STATE_VERSION = 1      # the numbers, versioned: bump when the same inputs would give a different object
+# The numbers, versioned: bump when the same inputs would give a different embedding, graph or
+# score. The harness keys its cached view of the embeddings on it (int@scintegrate, D6). A column
+# carried from the inputs, as the design's key (0.7.0), moves VERSION and not this.
+STATE_VERSION = 1
 
 CANNOT_SHOW = [
     "A ranking on the scIB total is a ranking on chosen weights over chosen metrics; a different "
@@ -106,8 +109,12 @@ def _load(a):
         print(f"  hvg    : {int(D['hvg'].sum()):,} flagged in var, reused verbatim")
 
     D["factors"], D["covariates"], D["design_note"] = {}, {}, "no --design given"
+    D["design_key"] = None
     if a.design:
         table, key, cols = inputs.read_design(a.design, set(D["batch"]), a.design_sample_col)
+        # The design's key column travels too, under the design's name (GAP-C102). Decided here,
+        # before anything is computed, because a conflicting column of that name is a refusal.
+        D["design_key"] = inputs.design_key(A.obs, key, a.batch_key)
         want = list(a.bio_factor or cols)
         bad = [f for f in want if f not in cols]
         if bad:
@@ -127,6 +134,7 @@ def _load(a):
             + ", ".join(f"{f} ({len(set(D['factors'][f]))} levels)" for f in want)
             + (f"; carried but not declared biological: {', '.join(other)}" if other else ""))
         print(f"  design : {D['design_note']}")
+        print(f"  key    : {D['design_key']['column']!r}, {D['design_key']['how']}")
     return D
 
 
@@ -594,6 +602,12 @@ def _integrate(a):
             else:
                 _full.obs[_f] = _v
         obs_keep_early.append(_f)
+    # The design's key, LAST, so every column above keeps its place (GAP-C102; inputs.design_key).
+    _dk = D.get("design_key")
+    if _dk and _dk["column"] not in obs_keep_early:
+        if _dk["added"]:
+            _full.obs[_dk["column"]] = np.asarray(_full.obs[a.batch_key].astype(str))
+        obs_keep_early.append(_dk["column"])
     (out / "objects").mkdir(parents=True, exist_ok=True)
     op = out / "objects" / a.object_name
     print(f"\nwriting the embeddings BEFORE scoring, so scoring cannot lose them", flush=True)
@@ -777,7 +791,7 @@ def _integrate(a):
             "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
             "methods_compared": [r["method"] for r in results], "methods_absent": missing,
             "pca": D["pca"],
-            "design": D["design_note"], "sentinels": D["sentinels"],
+            "design": D["design_note"], "design_key": D.get("design_key"), "sentinels": D["sentinels"],
             "scib_metrics_computed_on": int(real.sum()),
             "scib_metrics_excluded_sentinels": n_drop}
     chosen["supervision_caveat"] = BM.supervision_caveat(chosen.get("ranked") or [], a.label_key)
@@ -822,7 +836,7 @@ def _integrate(a):
                "umap_min_dist": a.min_dist, "umap_n_neighbors": FIG.N_NEIGHBORS,
                "colour_by": list(D.get("colour_cols") or []),
                "method_settings": {r["method"]: (r.get("settings") or {}) for r in results},
-               "design": D["design_note"], "coarse": D["coarse_note"],
+               "design": D["design_note"], "design_key": D.get("design_key"), "coarse": D["coarse_note"],
                "sentinels": D["sentinels"], "counts": D["counts_note"],
                "methods": [{"method": r["method"], "kind": r["kind"], "note": r["note"],
                             "sees": ME.sees(r["method"]),
@@ -1319,7 +1333,8 @@ def _common(s):
     s.add_argument("--design", default=None, type=Path,
                    help="CSV keyed on the batch, carrying the factors the study is about")
     s.add_argument("--design-sample-col", default=None,
-                   help="the column in --design holding the batch name (default: the first)")
+                   help="the column in --design holding the batch name (default: the first); "
+                        "the object carries it under this name")
     s.add_argument("--bio-factor", action="append", default=None, metavar="COLUMN",
                    help="which --design columns are the biology, repeatable (default: all)")
     s.add_argument("--k", type=int, default=30)

@@ -37,7 +37,7 @@ One file. Every method's embedding lives in it, beside the counts they were deri
 | `obsm['X_<method>']` | each corrected space | latent coordinates, one per `embed`-kind method |
 | `obsm['X_umap_<method>']` | one 2-D view per method | **figures only** — never an input to a metric or a model |
 | `obsm['X_umap']` | a copy of the **chosen** method's view | so a plotting call with no argument uses it |
-| `obs` | the batch key, the label column(s), every design column | nothing else |
+| `obs` | the batch key, the label column(s), every design column, the design's key column included under the design's name (last; when the key is `--batch-key` it is the batch column itself, and nothing is added) | nothing else; `report.json` `design_key` says how the key travelled |
 | `uns['scintegrate']` | the benchmark, the choice and its reason, the constraint on use | plain types only |
 
 **Why the counts are carried at all**, when embeddings are the point: the next stage's differential

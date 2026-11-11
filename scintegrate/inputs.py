@@ -217,3 +217,38 @@ def read_design(path, samples, sample_col=None):
               "the factor silently becomes 'missing' for exactly the cells it omits.")
     factors = [c for c in cols if c != key]
     return table, key, factors
+
+
+def design_key(obs, key, batch_key):
+    """How the design's KEY column travels in the deliverable, under the name the design gave it.
+
+    The design names each row by a batch, so its key column holds, for every cell, that cell's
+    `batch_key` value. A later stage is handed the study's own name for that column, not this
+    tool's flag, and an object that dropped it stops that stage (single-cell-harness GAP-C102).
+    Three cases, decided here, before anything is computed:
+      - the key IS the batch key: it is the batch column, and nothing is added;
+      - the object has no column of that name: it is added from the batch column, on every cell,
+        the withheld ones included (a cell's library is not decided by the integration);
+      - the object has one: it is kept as it is when it equals the batch column on every cell, and
+        REFUSED when it does not, because two columns would claim one name and a stage keyed on it
+        could not tell which one it was given.
+    Returns the record report.json and the object's provenance carry.
+    """
+    if key == batch_key:
+        return {"column": key, "how": "the batch column itself", "added": False}
+    if key in obs.columns:
+        mine = np.asarray(obs[key].astype(str))
+        batch = np.asarray(obs[batch_key].astype(str))
+        off = np.flatnonzero(mine != batch)
+        if off.size:
+            i = int(off[0])
+            raise Refuse(
+                f"the design is keyed on {key!r}, whose rows are named by {batch_key!r} values, but the "
+                f"object's own {key!r} column differs from {batch_key!r} on {off.size:,} of {len(mine):,} "
+                f"cells (the first: {mine[i]!r} where {batch_key!r} is {batch[i]!r}). The deliverable "
+                f"cannot carry both under one name. Rename the design's key column or the object's, or "
+                f"pass --batch-key {key} if that column is the batch.")
+        return {"column": key, "how": f"the object's own column, equal to {batch_key!r} on every cell",
+                "added": False}
+    return {"column": key, "how": f"added from {batch_key!r}: each cell's {batch_key} value, the withheld "
+                                  f"cells included", "added": True}

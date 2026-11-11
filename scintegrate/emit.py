@@ -88,9 +88,9 @@ def build(source, results, obs_keep, *, chosen=None, benchmark=None, assessment=
           constraint=None, provenance=None):
     """Assemble the deliverable from the input object and the method results.
 
-    `obs_keep` is the whole of obs that survives: the batch key, the label columns and the design
-    factors. Everything else is dropped, because an object carrying fifty label columns from an
-    upstream sweep makes a reader guess which one an embedding was scored against - and the answer
+    `obs_keep` is the whole of obs that survives: the batch key, the label columns, the design
+    factors and the design's key column. Everything else is dropped, because an object carrying
+    fifty label columns from an upstream sweep makes a reader guess which one an embedding was scored against - and the answer
     is recorded in uns here, against the column that is actually present.
     """
     A = source

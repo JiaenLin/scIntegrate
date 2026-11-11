@@ -32,9 +32,13 @@ The measurement layer is numpy and scikit-learn; `doctor` is stdlib-only, so it 
 interpreter you are worried about. A capability that is absent is named in the report with what
 its absence costs.
 
-`setup/install_env.sh --check` audits the current interpreter and changes nothing;
-`--prefix <dir>` builds one from `setup/environment.lock.yml`, which is captured from a working
-install rather than composed from bounds.
+`setup/install_env.sh --check` audits the current interpreter and changes nothing (`--strict`
+also refuses a package the lock does not pin); `--prefix <dir>` builds one from
+`setup/environment.lock.yml`, which is captured from a working install rather than composed from
+bounds, and pins its whole closure for linux x86_64 (`tests/test_the_lock_pins_its_closure.py`
+holds it to that). Every build is then checked strictly against the lock: the locked interpreter,
+every pin at its version, nothing outside it but the manager's pip and wheel. `--no-editable`
+writes nothing into this checkout; the code then runs from it by `PYTHONPATH`.
 
 ## Run
 
@@ -240,6 +244,17 @@ Nor does anything here show the labels are correct. They are inherited from the 
 every limit recorded there applies to every number here.
 
 ## Versions
+
+**0.7.0.** The object carries the `--design` table's key column under the design's own name, as
+the last obs column, holding each cell's `--batch-key` value (the withheld cells included): before,
+every design column but the key was carried, so a later stage handed the study's own name for the
+library column found none. When the key IS `--batch-key`, nothing is added. An input that already
+has a column of the key's name is kept as it is when it equals the batch column, and refused, by
+name and before anything runs, when it does not. `report.json` and the object's provenance carry
+`design_key`. No embedding, graph or score moves (STATE_VERSION stays 1). The environment lock
+pins its whole closure for linux x86_64 (120 packages), and `setup/install_env.sh` builds on a
+conda without `env create --yes`, writes nothing into the checkout under `--no-editable`, and
+checks every build strictly against the lock.
 
 **0.6.0.** When `--drop-labels` withholds cells that have rows in the input's `X_pca`, the PCA is
 refit on the retained cells, and `none`, Harmony and BBKNN are fitted on that: before, the input's
