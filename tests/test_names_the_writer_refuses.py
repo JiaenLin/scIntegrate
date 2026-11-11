@@ -59,7 +59,7 @@ from _cohort import DESIGN_COLUMNS, LIBRARIES, cohort, design  # noqa: E402
 
 def run(*argv):
     r = subprocess.run([sys.executable, "-m", "scintegrate.cli", *map(str, argv)],
-                       cwd=str(ROOT), env={**os.environ, "PYTHONPATH": str(ROOT)},
+                       cwd=str(ROOT), env={**os.environ, "PYTHONPATH": str(ROOT), "TMPDIR": str(TMP)},
                        capture_output=True, text=True, timeout=900)
     return r.returncode, r.stdout + r.stderr
 
@@ -86,6 +86,13 @@ def write_design(path, header, extra=None):
 def status(out):
     p = out / "STATUS.json"
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+
+
+TMP = Path(tempfile.mkdtemp(prefix="names-tmpdir-"))     # the runs' TMPDIR: the probe must not land here
+
+
+def probes_left(out):
+    return [p.name for p in list(out.glob(".scintegrate-names-*")) + list(TMP.glob("*scintegrate-names-*"))]
 
 
 with tempfile.TemporaryDirectory() as td:
@@ -119,6 +126,7 @@ with tempfile.TemporaryDirectory() as td:
         check(f"{what}: the refusal names it", shown in log, log.strip().splitlines()[-1][:160])
         check(f"{what}: nothing under objects/, no .h5ad listed",
               not any((out / "objects").glob("*")) and not listed, f"listed {listed}")
+        check(f"{what}: no probe left in the run or in TMPDIR", not probes_left(out), f"{probes_left(out)}")
 
     print("2. names the writer takes are carried, not refused")
     lab = A0.obs["cell_type"].astype(str).replace({"UNRESOLVED": "no/call"})
@@ -161,6 +169,7 @@ with tempfile.TemporaryDirectory() as td:
     check("an asked method holding '/' is kept as JSON text", isinstance(absent, str) and "a/b" in
           json.loads(absent), f"{absent!r}")
     st = status(out)
+    check("no probe left in the run or in TMPDIR", not probes_left(out), f"{probes_left(out)}")
     check("STATUS lists the object under its name", "objects/the object.h5ad" in
           [x["path"] for x in st.get("products") or []])
 
@@ -195,5 +204,7 @@ with tempfile.TemporaryDirectory() as td:
     check("the object's provenance: state_version 2", prov.get("state_version") == 2,
           f"{prov.get('state_version')!r}")
 
+import shutil  # noqa: E402
+shutil.rmtree(TMP, ignore_errors=True)
 print("\n" + ("PASS" if not FAILED else f"FAIL ({len(FAILED)}): " + "; ".join(FAILED)))
 raise SystemExit(1 if FAILED else 0)

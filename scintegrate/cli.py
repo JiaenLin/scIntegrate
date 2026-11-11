@@ -216,7 +216,8 @@ def _check_writable(D, a, A):
     the input's. A name the file format forbids used to be found by the writer, after every method
     had trained (W046's verifier: a key 'lib/run' or '_index', and a factor 'donor/x' on the base).
     The obs the object will carry and the input's var are written through the object's own write
-    path, into a temporary directory, and what the writer refuses is refused here by name, with
+    path, into a temporary directory inside the run's own (removed after; nothing is written outside the
+    project), and what the writer refuses is refused here by name, with
     the option that named it, what is wrong with it, and the writer's own words."""
     from . import emit, inputs
     import pandas as pd
@@ -234,7 +235,9 @@ def _check_writable(D, a, A):
             "not have, so nothing was computed")
     frame = pd.DataFrame({c: (C["added"][c] if c in C["added"] else A.obs[c]) for c in C["keep"]},
                          index=A.obs.index)
-    bad = emit.unwritable(frame, A.var)
+    where = Path(a.out)
+    where.mkdir(parents=True, exist_ok=True)      # the probe is written inside the run, then removed
+    bad = emit.unwritable(frame, A.var, where=where)
     if not bad:
         return
     lines = []
@@ -926,7 +929,7 @@ def _integrate(a):
     obj = emit.build(A_out, results_wide, obs_keep, chosen=chosen["default"], benchmark=bench,
                      assessment={"summary": summ, "celltypes": _plainrows(arows)},
                      constraint=constraint, provenance=prov)
-    emit.write_h5ad(obj, op)          # rewritten in place, now WITH the benchmark
+    emit.write_h5ad(obj, op)          # rewritten, all or nothing, now WITH the benchmark
     print(f"  {op}  ({op.stat().st_size / 1e9:.2f} GB)")
     # `.layers` CAN ENUMERATE A `None` KEY that is really `.X` - anndata says so in a deprecation
     # warning - so a bare join over it raises TypeError. This killed a completed run at its last

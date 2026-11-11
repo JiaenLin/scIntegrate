@@ -111,13 +111,14 @@ def _words(e):
     return f"{type(e).__name__}: " + " ".join(str(e).split())[:240]
 
 
-def _refusal_of(obs=None, var=None):
-    """Write an object holding only these tables through write_h5ad, into a temporary directory, and
-    return the writer's words if it refuses them, else None."""
+def _refusal_of(obs=None, var=None, where=None):
+    """Write an object holding only these tables through write_h5ad, into a temporary directory made
+    inside `where` (the run's own directory: a tool writes nowhere outside the project that runs it)
+    and removed after, and return the writer's words if it refuses them, else None."""
     import tempfile
     from pathlib import Path
     import anndata as ad
-    with tempfile.TemporaryDirectory(prefix="scintegrate-names-") as d:
+    with tempfile.TemporaryDirectory(prefix=".scintegrate-names-", dir=where) as d:
         try:
             write_h5ad(ad.AnnData(obs=obs, var=var), Path(d) / "names.h5ad")
         except Exception as e:                                             # noqa: BLE001
@@ -125,13 +126,13 @@ def _refusal_of(obs=None, var=None):
     return None
 
 
-def unwritable(obs, var=None):
+def unwritable(obs, var=None, where=None):
     """What the object's writer refuses in the obs and var this run will write, ASKED OF THE WRITER.
 
     Not a copy of its rules: a copy is right only for the version it was copied from, and a name it
     misses is found again where W046's verifier found it, at the write, after every method has
-    trained. The tables are written through `write_h5ad` itself, into a temporary directory, before
-    anything is computed. Measured on anndata 0.13.2 over h5py 3.16 (the lock's pins), the writer
+    trained. The tables are written through `write_h5ad` itself, into a temporary directory inside `where`
+    (the run's own; nothing lands outside the project) and removed after, before anything is computed. Measured on anndata 0.13.2 over h5py 3.16 (the lock's pins), the writer
     refuses as a column name a '/' anywhere, exactly '_index', the empty name, '.', and a NUL, and
     refuses a name repeated or the index's name on a column whose values differ; it takes spaces,
     dots, a leading underscore, non-ASCII, newlines and quotes. Another version's rules are its own,
@@ -140,7 +141,7 @@ def unwritable(obs, var=None):
     Returns [(table, column, the writer's words)], one per column it refuses on its own; a refusal
     no single column explains is returned once, with column None. [] when it takes them.
     """
-    whole = _refusal_of(obs, var)
+    whole = _refusal_of(obs, var, where)
     if whole is None:
         return []
     out = []
@@ -148,7 +149,7 @@ def unwritable(obs, var=None):
         if df is None:
             continue
         for i, c in enumerate(df.columns):
-            w = _refusal_of(**{axis: df.iloc[:, [i]]})
+            w = _refusal_of(**{axis: df.iloc[:, [i]]}, where=where)
             if w is not None:
                 out.append((axis, c, w))
     return out or [("obs", None, whole)]
