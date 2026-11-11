@@ -125,7 +125,7 @@ objects/cohort_integrated.h5ad
     layers['lognorm']     the same values as X, named so X's scale is never implicit
     obsm['X_pca']         the uncorrected baseline none, Harmony and BBKNN read: the input's,
                           or refit on the retained cells when withheld cells were in its fit;
-                          NaN on withheld cells (report.json pca says which)
+                          NaN on withheld cells unless --keep-input-pca (report.json pca says which)
     obsm['X_harmony']     one per method compared
     obsm['X_umap_<m>']    one 2-D view per method
     obsm['X_umap']        a copy of the chosen view
