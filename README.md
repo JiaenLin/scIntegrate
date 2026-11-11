@@ -37,7 +37,7 @@ also refuses a package the lock does not pin); `--prefix <dir>` builds one from
 `setup/environment.lock.yml`, which is captured from a working install rather than composed from
 bounds, and pins its whole closure for linux x86_64 (`tests/test_the_lock_pins_its_closure.py`
 holds it to that). Every build is then checked strictly against the lock: the locked interpreter,
-every pin at its version, nothing outside it but the manager's pip and wheel. `--no-editable`
+every pin at its version, nothing outside it but the manager's pip, setuptools and wheel. `--no-editable`
 writes nothing into this checkout; the code then runs from it by `PYTHONPATH`.
 
 ## Run
