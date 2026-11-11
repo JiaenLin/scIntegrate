@@ -276,8 +276,8 @@ check("and REFUSES an object holding no embeddings rather than inventing them",
 section("L3. the expensive half is written before the fragile half")
 check("the object is written BEFORE scoring",
       "BEFORE SCORING" in cli and "writing the embeddings BEFORE scoring" in cli)
-check("and rewritten in place once the benchmark exists",
-      "rewritten in place, now WITH the benchmark" in cli)
+check("and rewritten, all or nothing, once the benchmark exists",
+      "rewritten, all or nothing, now WITH the benchmark" in cli)
 check("the scIB clustering grid is tunable, and says what that costs",
       '"--scib-resolutions"' in cli and "COARSER SEARCH" in cli)
 check("the leiden flavour can be restored to scIB's literal behaviour",
