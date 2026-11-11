@@ -21,12 +21,18 @@ tests:
 # (sch/dev/fixture.py REAL_GENES) and it carries no gene identifiers, so the declaration can be
 # read only against the symbol case - which is what the run then records. The fixture declares no
 # assay - it is synthetic, neither cells nor nuclei - and the run records "not declared".
+#
+# `--design {design}` is the fixture's own design table, keyed on its sample role, so the condition, batch,
+# subject and covariate axes reach the pipeline as design factors on both shapes (W046 fix 1, ROUTE R20; measured
+# green on fixture_a, fixture_b and agree). The counts axis does not: the count models read layers['counts'] by
+# that name, so shape b's `raw_counts` is not seen; the method point's example (harmony) reads no counts.
 fixture:
   command: ["{python}", "-m", "scintegrate.cli", "integrate",
             "--h5ad", "{observations}", "--out", "{out}",
             "--batch-key", "{role_sample}", "--label-key", "{role_cell_type}",
             "--species", "homo_sapiens",
-            "--methods", "none,{name}", "--n-cores", "1"]
+            "--methods", "none,{name}", "--n-cores", "1",
+            "--design", "{design}"]
   products: ["report.json"]
   timeout: 1800
 
