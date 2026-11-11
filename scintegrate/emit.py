@@ -77,11 +77,99 @@ class classic_string_encoding:
         return False
 
 
+#: The suffix a write in progress carries. Not one the run's product list reads (status.products_of),
+#: so a file a crash or a kill left behind is never listed as the object.
+WRITING = ".writing"
+
+
 def write_h5ad(adata, path, **kw):
-    """The only write path in this package. Holds the encoding guarantee."""
-    with classic_string_encoding():
-        adata.write_h5ad(str(path), **kw)
+    """The only write path in this package. Holds the encoding guarantee, and writes ALL OR NOTHING.
+
+    The file is written beside its name, under WRITING, and renamed into place only once the writer
+    has finished. A write the writer gives up on part-way used to leave a half-written file under
+    the object's own name (502 cells, no genes, no embeddings: W046's verifier), which the run's
+    status then listed as its object; and the rewrite after scoring opens the file it replaces, so
+    a failure there destroyed the embeddings written first precisely so that scoring could not lose
+    them. Now a failed write removes its own partial file and leaves the earlier object as it was.
+    """
+    import os
+    from pathlib import Path
+    path = Path(path)
+    part = path.with_name(path.name + WRITING)
+    try:
+        with classic_string_encoding():
+            adata.write_h5ad(str(part), **kw)
+        os.replace(part, path)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
     return path
+
+
+def _words(e):
+    """The writer's own words for a refusal, on one line."""
+    return f"{type(e).__name__}: " + " ".join(str(e).split())[:240]
+
+
+def _refusal_of(obs=None, var=None):
+    """Write an object holding only these tables through write_h5ad, into a temporary directory, and
+    return the writer's words if it refuses them, else None."""
+    import tempfile
+    from pathlib import Path
+    import anndata as ad
+    with tempfile.TemporaryDirectory(prefix="scintegrate-names-") as d:
+        try:
+            write_h5ad(ad.AnnData(obs=obs, var=var), Path(d) / "names.h5ad")
+        except Exception as e:                                             # noqa: BLE001
+            return _words(e)
+    return None
+
+
+def unwritable(obs, var=None):
+    """What the object's writer refuses in the obs and var this run will write, ASKED OF THE WRITER.
+
+    Not a copy of its rules: a copy is right only for the version it was copied from, and a name it
+    misses is found again where W046's verifier found it, at the write, after every method has
+    trained. The tables are written through `write_h5ad` itself, into a temporary directory, before
+    anything is computed. Measured on anndata 0.13.2 over h5py 3.16 (the lock's pins), the writer
+    refuses as a column name a '/' anywhere, exactly '_index', the empty name, '.', and a NUL, and
+    refuses a name repeated or the index's name on a column whose values differ; it takes spaces,
+    dots, a leading underscore, non-ASCII, newlines and quotes. Another version's rules are its own,
+    and this asks them.
+
+    Returns [(table, column, the writer's words)], one per column it refuses on its own; a refusal
+    no single column explains is returned once, with column None. [] when it takes them.
+    """
+    whole = _refusal_of(obs, var)
+    if whole is None:
+        return []
+    out = []
+    for axis, df in (("obs", obs), ("var", var)):
+        if df is None:
+            continue
+        for i, c in enumerate(df.columns):
+            w = _refusal_of(**{axis: df.iloc[:, [i]]})
+            if w is not None:
+                out.append((axis, c, w))
+    return out or [("obs", None, whole)]
+
+
+def _uns_key_refused(key, _seen={}):
+    """Whether the writer refuses `key` as a key of uns, asked of the writer (an in-memory file)."""
+    if key not in _seen:
+        import io
+        import h5py
+        try:
+            from anndata.io import write_elem
+        except ImportError:                                                # anndata < 0.11
+            from anndata.experimental import write_elem
+        try:
+            with h5py.File(io.BytesIO(), "w") as f:
+                write_elem(f, "uns", {key: 0})
+            _seen[key] = False
+        except Exception:                                                  # noqa: BLE001
+            _seen[key] = True
+    return _seen[key]
 
 
 def build(source, results, obs_keep, *, chosen=None, benchmark=None, assessment=None,
@@ -174,9 +262,18 @@ def _plain(x):
     Such a list becomes a JSON string: always writable, readable by anything, and losslessly
     recoverable with `json.loads`. The canonical form of that data is the CSV in `tables/`
     anyway - uns carries it so the object is self-describing, not so it can be computed from.
+
+    A DICT KEYED ON A NAME THE WRITER REFUSES becomes a JSON string the same way. Such keys are the
+    run's own values, not this tool's words: a sentinel label ('no/call') counted in the provenance,
+    a method name asked for and absent. Both are correct inputs; refusing them would block a run the
+    object can carry, and writing them raised at the rewrite after scoring (W046 fix 1). Every other
+    dict is kept as it was.
     """
     if isinstance(x, dict):
-        return {str(k): _plain(v) for k, v in x.items()}
+        d = {str(k): _plain(v) for k, v in x.items()}
+        if any(_uns_key_refused(k) for k in d):
+            return json.dumps(d, default=str)
+        return d
     if isinstance(x, (list, tuple)):
         if any(isinstance(v, dict) for v in x):
             return json.dumps([_plain(v) for v in x], default=str)

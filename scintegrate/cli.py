@@ -27,10 +27,11 @@ from pathlib import Path
 from . import axes     # stdlib only, like status and env: `--help` and `describe` stay instant
 
 REFUSE = 2
-# The numbers, versioned: bump when the same inputs would give a different embedding, graph or
-# score. The harness keys its cached view of the embeddings on it (int@scintegrate, D6). A column
-# carried from the inputs, as the design's key (0.7.0), moves VERSION and not this.
-STATE_VERSION = 1
+STATE_VERSION = 2      # the numbers, versioned: bump when the same inputs would give a different object
+# 2 (0.7.0): with cells withheld, the PCA is refit on the retained cells, which moves X_pca, every
+# embedding, view, graph and metric (W039); the design's key column travels in obs (W046). The
+# harness keys its cached view of the object on this number, and refuses a tool that declares
+# another (int@scintegrate, D6), so it moves with the adapter's in one step.
 
 CANNOT_SHOW = [
     "A ranking on the scIB total is a ranking on chosen weights over chosen metrics; a different "
@@ -136,6 +137,118 @@ def _load(a):
         print(f"  design : {D['design_note']}")
         print(f"  key    : {D['design_key']['column']!r}, {D['design_key']['how']}")
     return D
+
+
+def _carried_obs(D, a, obs):
+    """Every obs column the object will carry, in the order it carries them, each with the option
+    that names it; decided from the inputs alone, before anything is computed.
+
+    The batch key, the label key, the l1 key and the colour columns first, each once; then every
+    design column; then the design's key. A design column named like one of the first is the same
+    column when the design's value equals the object's on every cell, and is carried once; when it
+    differs, two columns would claim one name - the writer refuses a repeated name, and a reader
+    could not tell which it holds - so the run is refused here, naming both.
+    Returns {"keep": [...], "named": {column: [options]}, "added": {column: values per cell}}."""
+    from . import inputs
+    import numpy as np
+    named, added = {}, {}
+    first = ([(a.batch_key, "--batch-key"), (a.label_key, "--label-key")]
+             + ([(a.l1_key, "--l1-key")] if a.l1_key else [])
+             + [(c, f"a colour column ({(D.get('colour_why') or {}).get(c, '--colour-by')})")
+                for c in (D.get("colour_cols") or [])])
+    for c, why in first:
+        named.setdefault(c, []).append(why)
+    keep = list(named)
+    for f, v in (D.get("covariates") or {}).items():
+        why = "a column of --design"
+        if f in named:
+            mine, theirs = np.asarray(obs[f].astype(str)), np.asarray(v).astype(str)
+            off = np.flatnonzero(mine != theirs)
+            if off.size:
+                i = int(off[0])
+                raise inputs.Refuse(
+                    f"{why}, {f!r}, has the name of the column {' and '.join(named[f])} carries, and "
+                    f"differs from it on {off.size:,} of {len(mine):,} cells (the first: {theirs[i]!r} "
+                    f"where the object holds {mine[i]!r}). The object cannot carry both under one name; "
+                    f"rename the design's column.")
+            named[f].append(why + ", equal to it on every cell")
+            continue
+        named.setdefault(f, []).append(why)
+        keep.append(f)
+        if f not in obs.columns:
+            added[f] = np.asarray(v)
+    dk = D.get("design_key")
+    if dk:
+        why = "the design's key (--design-sample-col, or the design's first column)"
+        if dk["column"] in named:
+            named[dk["column"]].append(why)
+        else:
+            named[dk["column"]] = [why]
+            keep.append(dk["column"])
+            if dk["added"]:
+                added[dk["column"]] = np.asarray(obs[a.batch_key].astype(str))
+    return {"keep": keep, "named": named, "added": added}
+
+
+def _what_is_wrong(name):
+    """A reader's reason for a name the writer refused. The writer decides; this only explains."""
+    if not isinstance(name, str):
+        return (f"it is {name!r}, not text: a design row with more fields than its header gives a "
+                "column without a name")
+    if name == "":
+        return "it is empty: a design header ending in a comma gives such a column"
+    if "/" in name:
+        return "it holds '/', which the file format reads as a path separator"
+    if name == "_index":
+        return "the file format reserves it for a table's index"
+    if name == ".":
+        return "the file format reads '.' as the table itself"
+    if "\x00" in name:
+        return "it holds a NUL character"
+    return "see the writer's words"
+
+
+def _check_writable(D, a, A):
+    """Refuse, BEFORE ANYTHING IS COMPUTED, a run whose object the writer would refuse to write.
+
+    Every name the object carries as a key of obs is a user's word or the input's: the batch key,
+    the label key, the l1 key, the colour columns, every design column and the design's key; var is
+    the input's. A name the file format forbids used to be found by the writer, after every method
+    had trained (W046's verifier: a key 'lib/run' or '_index', and a factor 'donor/x' on the base).
+    The obs the object will carry and the input's var are written through the object's own write
+    path, into a temporary directory, and what the writer refuses is refused here by name, with
+    the option that named it, what is wrong with it, and the writer's own words."""
+    from . import emit, inputs
+    import pandas as pd
+    name = getattr(a, "object_name", None)
+    if name is not None and (Path(name).name != name or name in ("", ".", "..")
+                             or not name.endswith(".h5ad")):
+        raise inputs.Refuse(f"--object-name {name!r} is not a file name ending in .h5ad: the object is "
+                            f"written into objects/ under it, and the run lists its .h5ad files as "
+                            f"its products")
+    C = D["carried"]
+    gone = [c for c in C["keep"] if c not in C["added"] and c not in A.obs.columns]
+    if gone:
+        raise inputs.Refuse("the object would carry " + ", ".join(
+            f"{c!r} ({' and '.join(C['named'][c])})" for c in gone) + ", which the input's obs does "
+            "not have, so nothing was computed")
+    frame = pd.DataFrame({c: (C["added"][c] if c in C["added"] else A.obs[c]) for c in C["keep"]},
+                         index=A.obs.index)
+    bad = emit.unwritable(frame, A.var)
+    if not bad:
+        return
+    lines = []
+    for axis, col, words in bad:
+        if col is None:
+            lines.append(f"the {axis} table as a whole ({words})")
+        elif axis == "var":
+            lines.append(f"{col!r}, a column of the input's var: {_what_is_wrong(col)} ({words})")
+        else:
+            lines.append(f"{col!r}, {' and '.join(C['named'].get(col, ['a column']))}: "
+                         f"{_what_is_wrong(col)} ({words})")
+    raise inputs.Refuse("the object's writer refuses " + ("this name" if len(lines) == 1 else
+                        f"these {len(lines)} names") + ", so nothing was computed: "
+                        + "; ".join(lines) + ". Rename it in the design or the input.")
 
 
 def _views(results, seed=0, min_dist=None):
@@ -463,6 +576,11 @@ def _integrate(a):
     import numpy as np
     try:
         D = _load(a)
+        # What the object will carry, and whether its writer takes every name in it, decided
+        # NOW: a name the file format forbids used to be found at the write, after every method
+        # had trained (W046's verifier).
+        D["carried"] = _carried_obs(D, a, D["adata"].obs)
+        _check_writable(D, a, D["adata"])
     except inputs.Refuse as e:
         return _refuse(a, e)
     A = D["adata"]
@@ -587,9 +705,9 @@ def _integrate(a):
     # metrics, and `scintegrate score` recomputes those in minutes from this file.
     # Every column a panel is coloured by must survive the slim, or the figure that is the whole
     # point of the stage is drawn from a column that is no longer there.
-    obs_keep_early = list(dict.fromkeys(
-        [a.batch_key, a.label_key] + ([a.l1_key] if a.l1_key else [])
-        + list(D.get("colour_cols") or [])))
+    # The columns, their order and their names were decided, and put to the writer, before anything
+    # was computed (_carried_obs, _check_writable).
+    obs_keep_early = list(D["carried"]["keep"])
     _full = D.get("full_adata") if D.get("drop_mask") is not None else A
     for _f, _v in D["covariates"].items():
         if _f not in _full.obs:
@@ -601,13 +719,10 @@ def _integrate(a):
                 _full.obs[_f] = _wide
             else:
                 _full.obs[_f] = _v
-        obs_keep_early.append(_f)
     # The design's key, LAST, so every column above keeps its place (GAP-C102; inputs.design_key).
     _dk = D.get("design_key")
-    if _dk and _dk["column"] not in obs_keep_early:
-        if _dk["added"]:
-            _full.obs[_dk["column"]] = np.asarray(_full.obs[a.batch_key].astype(str))
-        obs_keep_early.append(_dk["column"])
+    if _dk and _dk["added"] and _dk["column"] not in _full.obs:
+        _full.obs[_dk["column"]] = np.asarray(_full.obs[a.batch_key].astype(str))
     (out / "objects").mkdir(parents=True, exist_ok=True)
     op = out / "objects" / a.object_name
     print(f"\nwriting the embeddings BEFORE scoring, so scoring cannot lose them", flush=True)
