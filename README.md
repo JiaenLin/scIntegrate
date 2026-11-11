@@ -83,7 +83,9 @@ cannot show which it holds. It is recorded in the run's provenance and wording w
 recorded as `not declared` when it is not — never guessed and never defaulted.
 
 The object is written **as soon as the embeddings exist**, complete but for the benchmark, then
-rewritten in place once the scores are there. A scoring failure costs the metrics, not the models.
+rewritten once the scores are there. A scoring failure costs the metrics, not the models. Each
+write is all or nothing: the file is written beside its name and renamed into place when complete,
+so a failed write leaves no partial file and the earlier object as it was.
 
 ## Methods
 
@@ -175,7 +177,12 @@ s3,control,d7,v3.1
 ```
 
 A batch present in the object with no row in the table is refused by name. Nothing is derived by
-pattern-matching a sample name.
+pattern-matching a sample name. Every name the object will carry as a column (the batch, label
+and l1 keys, the colour columns, every design column and the design's key) is put to the object's
+writer before anything is computed: one it refuses (a `/` anywhere, `_index`, the empty name a
+header ending in a comma gives) is refused by name, with the writer's own words. A design column
+named like a column already carried is that column when equal on every cell, and refused when not.
+Names with spaces, dots, a leading underscore or non-ASCII letters are carried as written.
 
 ## Tests
 
@@ -251,7 +258,11 @@ every design column but the key was carried, so a later stage handed the study's
 library column found none. When the key IS `--batch-key`, nothing is added. An input that already
 has a column of the key's name is kept as it is when it equals the batch column, and refused, by
 name and before anything runs, when it does not. `report.json` and the object's provenance carry
-`design_key`. No embedding, graph or score moves (STATE_VERSION stays 1). The environment lock
+`design_key`. A name the object's writer refuses is refused before anything is computed, where it
+used to fail at the write after every method had trained, and every write is all or nothing.
+STATE_VERSION is 2: with cells withheld the PCA is refit on the retained cells, which moves X_pca
+and every embedding, view, graph and metric for such inputs, and obs gains the key column; the
+harness's adapter must declare the same number. The environment lock
 pins its whole closure for linux x86_64 (120 packages), and `setup/install_env.sh` builds on a
 conda without `env create --yes`, writes nothing into the checkout under `--no-editable`, and
 checks every build strictly against the lock.

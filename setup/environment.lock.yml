@@ -73,7 +73,8 @@ dependencies:
       # pynndescent 0.7.0 reached a sibling tool's fresh build and killed scanpy's neighbour graph on
       # every object of 8,192 cells or more (single-cell-harness GAP-C82). Versions shared with
       # scQC's lock are scQC's (the interpreter the stages before this one run in); the rest are
-      # pip's choice for this platform as of 2026-08-17, when the pins above were captured.
+      # a resolver's (uv) for x86_64-manylinux_2_28 and CPython 3.12.12, held to releases before
+      # 2026-08-18 (--exclude-newer), the day after the pins above were captured.
       # What each requires is recorded in environment.lock.requires.tsv and checked by
       # tests/test_the_lock_pins_its_closure.py. A CUDA wheel set is part of torch's closure on linux.
       - absl-py==2.5.0

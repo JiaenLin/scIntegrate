@@ -248,7 +248,7 @@ def _check_writable(D, a, A):
                          f"{_what_is_wrong(col)} ({words})")
     raise inputs.Refuse("the object's writer refuses " + ("this name" if len(lines) == 1 else
                         f"these {len(lines)} names") + ", so nothing was computed: "
-                        + "; ".join(lines) + ". Rename it in the design or the input.")
+                        + "; ".join(lines) + ". Rename each in the design or the input.")
 
 
 def _views(results, seed=0, min_dist=None):

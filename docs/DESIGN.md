@@ -14,7 +14,7 @@ Training is what costs hours. Scoring is what breaks: it depends on a pandas ver
 LISI helper, whether `rpy2` is installed, a walltime.
 
 So **the object is written as soon as the embeddings exist**, complete but for the benchmark, and
-rewritten in place once the scores are there. A scoring failure now costs the metrics, not the
+rewritten once the scores are there, each write all or nothing. A scoring failure now costs the metrics, not the
 models — and `score` recomputes those in minutes from the file that survived.
 
 This is not hypothetical. A twelve-hour run once completed every method, produced a default

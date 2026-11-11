@@ -37,7 +37,7 @@ One file. Every method's embedding lives in it, beside the counts they were deri
 | `obsm['X_<method>']` | each corrected space | latent coordinates, one per `embed`-kind method |
 | `obsm['X_umap_<method>']` | one 2-D view per method | **figures only** — never an input to a metric or a model |
 | `obsm['X_umap']` | a copy of the **chosen** method's view | so a plotting call with no argument uses it |
-| `obs` | the batch key, the label column(s), every design column, the design's key column included under the design's name (last; when the key is `--batch-key` it is the batch column itself, and nothing is added) | nothing else; `report.json` `design_key` says how the key travelled |
+| `obs` | the batch key, the label column(s), every design column, the design's key column included under the design's name (last; when the key is `--batch-key` it is the batch column itself, and nothing is added; a design column named like a column already carried is that column, once, when equal on every cell, and refused when not) | nothing else, and no name the writer refuses: those are refused before anything is computed; `report.json` `design_key` says how the key travelled |
 | `uns['scintegrate']` | the benchmark, the choice and its reason, the constraint on use | plain types only |
 
 **Why the counts are carried at all**, when embeddings are the point: the next stage's differential
@@ -60,6 +60,11 @@ A.uns["scintegrate"]["provenance"]["species"]   # as declared, and as the gene i
 A.uns["scintegrate"]["provenance"]["assay"]     # as declared, or "not declared"
 ```
 
+A record in `uns` keyed on the run's own values, such as `provenance["sentinels"]` (label: cells) or
+`provenance["methods_absent"]` (asked method: why), is a JSON string, read with `json.loads`, when
+one of its keys is a name the writer refuses (a sentinel label `no/call`); otherwise it is a mapping,
+as before. A list of records is always a JSON string.
+
 The constraint on use is worded from the design table and nothing else: which declared factor is
 constant within which batch, over how many levels, and whether it is merely nested in the batch
 key or aliased with it. `report.json` carries the same classification under `confounding`.
@@ -77,7 +82,9 @@ nowhere near the cause.
 ### It is written twice, on purpose
 
 The object appears **before** the benchmark runs, carrying every embedding and a `uns` that says
-`"not scored yet"`. It is rewritten in place once the scores exist. If you find an object whose
+`"not scored yet"`. It is rewritten once the scores exist. Both writes are all or nothing: the
+file is written beside its name (`.writing`) and renamed into place when complete, so a failed
+write leaves no partial file under the object's name and the earlier object as it was. If you find an object whose
 `uns['scintegrate']['benchmark']` says it was not scored, the run did not finish its metrics —
 `scintegrate score` computes them from it without retraining anything. It always rewrites
 `tables/scib_*.csv`. It rewrites `report.json`, and rebuilds the HTML report and the README, only

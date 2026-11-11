@@ -126,8 +126,21 @@ with tempfile.TemporaryDirectory() as td:
     src2 = td / "joint_slash_sentinel.h5ad"
     A0.write_h5ad(src2)
     names = {"donor": "donor id", "condition": "condition.v2", "chemistry": "chémistry 库"}
+    # 2b first: a design column named like --batch-key and equal to it is one column, not two.
+    des, out = td / "design_batch_named.csv", td / "batch_named"
+    write_design(des, H, {"library_copy": lambda lib: lib})
+    des.write_text(des.read_text(encoding="utf-8").replace("library,", "lib0,", 1)
+                   .replace("library_copy", "library"), encoding="utf-8")
+    rc, log = integrate(src, out, des, "--design-sample-col", "lib0")
+    check("a design column named like --batch-key, equal on every cell: exit 0", rc == 0,
+          log.strip().splitlines()[-1][:200] if log.strip() else "")
+    p = out / "objects" / "cohort_integrated.h5ad"
+    cols = list(ad.read_h5ad(p).obs.columns) if p.exists() else []
+    check("it is carried once", cols.count("library") == 1 and cols[:2] == ["library", "cell_type"],
+          f"{cols}")
+    # 2a: the rest, with no column named twice, so each case here fails on its own reason.
     des, out = td / "design_ok.csv", td / "accepted"
-    write_design(des, ["_lib"] + [names[c] for c in H[1:]], {"library": lambda lib: lib})
+    write_design(des, ["_lib"] + [names[c] for c in H[1:]])
     rc, log = integrate(src2, out, des, "--design-sample-col", "_lib", "--object-name", "the object.h5ad",
                         "--label-sentinel", "no/call", "--label-sentinel", "EXCLUDED",
                         methods="none,harmony,a/b")
@@ -136,8 +149,7 @@ with tempfile.TemporaryDirectory() as td:
     obj = ad.read_h5ad(p) if p.exists() else None
     cols = list(obj.obs.columns) if obj is not None else []
     want = ["library", "cell_type", "donor id", "condition.v2", "chémistry 库", "_lib"]
-    check("obs carries every name exactly, in order, the batch-named design column once", cols == want,
-          f"{cols}")
+    check("obs carries every name exactly, in order", cols == want, f"{cols}")
     if obj is not None and "_lib" in cols:
         check("the key '_lib' equals the batch on every cell, the withheld included",
               bool((obj.obs["_lib"].astype(str) == obj.obs["library"].astype(str)).all()))
