@@ -93,10 +93,17 @@ The run now prints the shortfall and every method uses the same reduced number.
 ## Harmony
 
 ```python
+meta = obs[[batch_key]]                               # unused categories removed, order kept
 with threadpoolctl.threadpool_limits(limits=1):      # opened after harmonypy is imported
-    harmonypy.run_harmony(X_pca[:, :n_pcs], obs, [batch_key],
+    harmonypy.run_harmony(X_pca[:, :n_pcs], meta, [batch_key],
                           max_iter_harmony=20, random_state=seed)
 ```
+
+**A category no cell carries is removed first.** harmonypy counts the levels it observes for
+theta and builds its design matrix from every category, so an unused one (what an object filtered
+upstream keeps of what it lost) failed the fit with `operands could not be broadcast together`
+before 0.6.0 (GAP-C65). Removing it keeps the order of the rest: a column without one gives the
+same fit, to the last bit (`tests/test_method_failure_status.py`).
 
 | parameter | here | harmonypy default | why |
 |---|---|---|---|

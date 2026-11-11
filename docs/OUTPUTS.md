@@ -33,7 +33,7 @@ One file. Every method's embedding lives in it, beside the counts they were deri
 | `X` | expression | **log1p of library-size-normalised counts**, normalised over all samples together |
 | `layers['counts']` | the same cells and genes | **raw integer counts** — what the count models read, and what DE reads |
 | `layers['lognorm']` | identical values to `X` | named explicitly, so `X`'s scale is never implicit |
-| `obsm['X_pca']` | the **uncorrected** baseline | kept permanently, so `none` stays comparable forever |
+| `obsm['X_pca']` | the **uncorrected** baseline `none`, Harmony and BBKNN read | kept permanently, so `none` stays comparable forever; NaN on withheld cells; refit on the retained cells when withheld cells were in the input's (`report.json` `pca` says which) |
 | `obsm['X_<method>']` | each corrected space | latent coordinates, one per `embed`-kind method |
 | `obsm['X_umap_<method>']` | one 2-D view per method | **figures only** — never an input to a metric or a model |
 | `obsm['X_umap']` | a copy of the **chosen** method's view | so a plotting call with no argument uses it |
